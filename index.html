@@ -1,11 +1,403 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SOL-Cade</title>
-  <meta http-equiv="refresh" content="0;url=sol-invaders.html">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SOL-Cade — Retro Arcade</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
+
+  :root {
+    --sol-purple: #9945FF;
+    --sol-green:  #14F195;
+    --sol-cyan:   #00C2FF;
+    --sol-pink:   #FF6FD8;
+    --sol-dark:   #0A0A12;
+    --sol-darker: #06060D;
+    --sol-panel:  #0F0F1E;
+    --sol-border: #1E1E38;
+    --text:       #E0E0FF;
+    --text-dim:   #5A5A8A;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  html, body {
+    width:100%; height:100%;
+    background: var(--sol-darker);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    overflow-x: hidden;
+    user-select: none;
+  }
+
+  @keyframes crtFlicker {
+    0%{opacity:1} 3%{opacity:.97} 6%{opacity:1}
+    50%{opacity:.985} 53%{opacity:1} 92%{opacity:.99} 100%{opacity:1}
+  }
+  body::before {
+    content:''; position:fixed; inset:0;
+    pointer-events:none; z-index:99;
+    animation: crtFlicker .15s infinite;
+  }
+  body::after {
+    content:''; position:fixed; inset:0;
+    background: repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.08) 2px,rgba(0,0,0,.08) 4px);
+    pointer-events:none; z-index:100;
+  }
+
+  #stars {
+    position:fixed; inset:0;
+    pointer-events:none; z-index:0;
+  }
+
+  #wrapper {
+    position:relative; z-index:1;
+    min-height:100vh;
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    padding:40px 20px;
+    gap:30px;
+  }
+
+  .logo {
+    font-family:'Orbitron',sans-serif;
+    font-size:52px; font-weight:900;
+    line-height:1; letter-spacing:.05em;
+    color:var(--sol-purple);
+    text-shadow: 0 0 40px rgba(153,69,255,.5);
+  }
+  .logo span { color:var(--sol-green); }
+
+  .subtitle {
+    font-size:11px; letter-spacing:.3em;
+    color:var(--text-dim); text-transform:uppercase;
+    margin-top:-8px;
+  }
+
+  #carousel {
+    position:relative;
+    width:500px; max-width:90vw;
+    height:340px;
+    perspective:800px;
+  }
+
+  .game-card {
+    position:absolute; inset:0;
+    background: var(--sol-panel);
+    border:1px solid var(--sol-border);
+    border-radius:12px;
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    gap:16px; padding:32px;
+    opacity:0;
+    transform: scale(.9) rotateY(20deg);
+    transition: opacity .5s, transform .5s;
+    pointer-events:none;
+  }
+  .game-card.active {
+    opacity:1;
+    transform: scale(1) rotateY(0deg);
+    pointer-events:all;
+  }
+  .game-card.prev {
+    opacity:0;
+    transform: scale(.9) rotateY(-20deg);
+  }
+
+  .game-card .card-accent {
+    position:absolute; inset:0;
+    border-radius:12px;
+    opacity:.08;
+    pointer-events:none;
+  }
+
+  .game-title {
+    font-family:'Orbitron',sans-serif;
+    font-size:36px; font-weight:900;
+    line-height:1; text-align:center;
+  }
+
+  .game-genre {
+    font-size:10px; letter-spacing:.25em;
+    color:var(--text-dim); text-transform:uppercase;
+  }
+
+  .game-art {
+    width:200px; height:100px;
+    display:flex; align-items:center; justify-content:center;
+  }
+
+  .play-btn {
+    padding:14px 48px;
+    font-family:'Orbitron',sans-serif;
+    font-size:14px; font-weight:700;
+    letter-spacing:.25em; text-transform:uppercase;
+    text-decoration:none;
+    background:transparent;
+    border:2px solid var(--sol-green);
+    color:var(--sol-green);
+    border-radius:4px;
+    cursor:pointer;
+    transition: background .15s, color .15s, box-shadow .15s;
+  }
+  .play-btn:hover {
+    background:var(--sol-green);
+    color:var(--sol-dark);
+    box-shadow: 0 0 24px rgba(20,241,149,.5);
+  }
+
+  #dots {
+    display:flex; gap:12px; align-items:center;
+  }
+  .dot {
+    width:10px; height:10px;
+    border-radius:50%;
+    background:var(--sol-border);
+    cursor:pointer;
+    transition: background .3s, box-shadow .3s;
+  }
+  .dot.active {
+    background:var(--sol-green);
+    box-shadow: 0 0 8px rgba(20,241,149,.5);
+  }
+
+  .nav-arrow {
+    position:absolute; top:50%;
+    transform:translateY(-50%);
+    z-index:5;
+    background:rgba(15,15,30,.8);
+    border:1px solid var(--sol-border);
+    color:var(--sol-cyan);
+    font-size:24px;
+    width:40px; height:40px;
+    border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer;
+    transition: border-color .2s, color .2s;
+    font-family:'Orbitron',sans-serif;
+  }
+  .nav-arrow:hover {
+    border-color:var(--sol-cyan);
+    color:#fff;
+  }
+  #nav-prev { left:-20px; }
+  #nav-next { right:-20px; }
+
+  .footer-text {
+    font-size:10px; color:var(--text-dim);
+    letter-spacing:.15em; text-align:center;
+    line-height:1.8;
+  }
+
+  @media(max-width:520px){
+    .logo { font-size:36px; }
+    .game-title { font-size:26px; }
+    #carousel { height:320px; }
+    .nav-arrow { width:32px; height:32px; font-size:18px; }
+    #nav-prev { left:-10px; }
+    #nav-next { right:-10px; }
+  }
+</style>
 </head>
 <body>
+
+<canvas id="stars"></canvas>
+
+<div id="wrapper">
+  <div class="logo">SOL<span>-Cade</span></div>
+  <div class="subtitle">Solana Retro Arcade &middot; Alpha</div>
+
+  <div id="carousel">
+    <button class="nav-arrow" id="nav-prev">&lsaquo;</button>
+    <button class="nav-arrow" id="nav-next">&rsaquo;</button>
+
+    <div class="game-card" data-href="sol-invaders.html">
+      <div class="card-accent" style="background:linear-gradient(135deg,var(--sol-green),transparent);"></div>
+      <div class="game-genre">Classic Shooter</div>
+      <div class="game-title" style="color:var(--sol-green);">SOL<br>Invaders</div>
+      <div class="game-art" id="art-invaders"></div>
+      <a href="sol-invaders.html" class="play-btn">Play</a>
+    </div>
+
+    <div class="game-card" data-href="sol-asteroids.html">
+      <div class="card-accent" style="background:linear-gradient(135deg,var(--sol-cyan),transparent);"></div>
+      <div class="game-genre">Vector Shooter</div>
+      <div class="game-title" style="color:var(--sol-cyan);">SOL<br>Asteroids</div>
+      <div class="game-art" id="art-asteroids"></div>
+      <a href="sol-asteroids.html" class="play-btn">Play</a>
+    </div>
+
+    <div class="game-card" data-href="sol-break.html">
+      <div class="card-accent" style="background:linear-gradient(135deg,var(--sol-pink),transparent);"></div>
+      <div class="game-genre">Brick Breaker</div>
+      <div class="game-title" style="color:var(--sol-pink);">SOL<br>Break</div>
+      <div class="game-art" id="art-break"></div>
+      <a href="sol-break.html" class="play-btn">Play</a>
+    </div>
+  </div>
+
+  <div id="dots"></div>
+
+  <div class="footer-text">
+    FREE TO PLAY &middot; BUILT ON SOLANA<br>
+    &copy; 2026 AOK ENTERPRISES LLC
+  </div>
+</div>
+
+<script>
+// ── Star field ──
+(function(){
+  const c=document.getElementById('stars'), x=c.getContext('2d');
+  c.width=innerWidth; c.height=innerHeight;
+  const s=Array.from({length:200},()=>({
+    x:Math.random()*c.width,y:Math.random()*c.height,
+    r:Math.random()*1.2+.2,a:Math.random()
+  }));
+  (function d(){
+    x.clearRect(0,0,c.width,c.height);
+    s.forEach(p=>{
+      p.a+=.003; if(p.a>1)p.a=0;
+      x.globalAlpha=.3+Math.sin(p.a*Math.PI)*.4;
+      x.fillStyle='#fff';
+      x.beginPath(); x.arc(p.x,p.y,p.r,0,Math.PI*2); x.fill();
+    });
+    requestAnimationFrame(d);
+  })();
+  addEventListener('resize',()=>{c.width=innerWidth;c.height=innerHeight;});
+})();
+
+// ── Mini pixel art ──
+function drawInvaderArt(container){
+  const c=document.createElement('canvas');
+  c.width=200; c.height=100; c.style.imageRendering='pixelated';
+  container.appendChild(c);
+  const x=c.getContext('2d');
+  const sprite=[
+    [0,0,1,0,0,0,0,0,1,0,0],
+    [0,0,0,1,0,0,0,1,0,0,0],
+    [0,0,1,1,1,1,1,1,1,0,0],
+    [0,1,1,0,1,1,1,0,1,1,0],
+    [1,1,1,1,1,1,1,1,1,1,1],
+    [1,0,1,1,1,1,1,1,1,0,1],
+    [1,0,1,0,0,0,0,0,1,0,1],
+    [0,0,0,1,1,0,1,1,0,0,0],
+  ];
+  const sz=4, ox=40, oy=10;
+  const colors=['#14F195','#9945FF','#00C2FF'];
+  for(let row=0;row<3;row++){
+    const clr=colors[row];
+    for(let col=0;col<4;col++){
+      const bx=ox+col*32, by=oy+row*28;
+      sprite.forEach((r,sy)=>r.forEach((v,sx)=>{
+        if(v){x.fillStyle=clr; x.fillRect(bx+sx*sz,by+sy*sz,sz,sz);}
+      }));
+    }
+  }
+}
+
+function drawAsteroidArt(container){
+  const c=document.createElement('canvas');
+  c.width=200; c.height=100; c.style.imageRendering='pixelated';
+  container.appendChild(c);
+  const x=c.getContext('2d');
+  x.strokeStyle='#00C2FF'; x.lineWidth=1.5;
+  function asteroid(cx,cy,r,pts){
+    x.beginPath();
+    for(let i=0;i<=pts;i++){
+      const a=(i/pts)*Math.PI*2;
+      const jr=r+Math.sin(i*2.7)*r*.3;
+      const px=cx+Math.cos(a)*jr, py=cy+Math.sin(a)*jr;
+      i===0?x.moveTo(px,py):x.lineTo(px,py);
+    }
+    x.stroke();
+  }
+  asteroid(50,50,25,9);
+  asteroid(130,35,18,7);
+  asteroid(160,75,12,8);
+  asteroid(85,70,15,6);
+  x.strokeStyle='#14F195'; x.lineWidth=1.5;
+  x.beginPath(); x.moveTo(100,45); x.lineTo(90,55); x.lineTo(95,52); x.lineTo(105,52); x.lineTo(110,55); x.closePath(); x.stroke();
+}
+
+function drawBreakArt(container){
+  const c=document.createElement('canvas');
+  c.width=200; c.height=100; c.style.imageRendering='pixelated';
+  container.appendChild(c);
+  const x=c.getContext('2d');
+  const colors=['#FF6FD8','#9945FF','#00C2FF','#14F195'];
+  for(let r=0;r<4;r++){
+    for(let col=0;col<6;col++){
+      x.fillStyle=colors[r];
+      x.fillRect(10+col*31, 8+r*14, 28, 10);
+    }
+  }
+  x.fillStyle='#fff';
+  x.beginPath(); x.arc(100,78,4,0,Math.PI*2); x.fill();
+  x.fillStyle='#14F195';
+  x.fillRect(75,90,50,6);
+}
+
+drawInvaderArt(document.getElementById('art-invaders'));
+drawAsteroidArt(document.getElementById('art-asteroids'));
+drawBreakArt(document.getElementById('art-break'));
+
+// ── Carousel ──
+const cards=document.querySelectorAll('.game-card');
+const dotsContainer=document.getElementById('dots');
+let current=0, autoTimer=null;
+
+cards.forEach((_,i)=>{
+  const d=document.createElement('div');
+  d.className='dot'+(i===0?' active':'');
+  d.addEventListener('click',()=>goTo(i));
+  dotsContainer.appendChild(d);
+});
+
+function goTo(idx){
+  const prev=current;
+  current=idx;
+  cards.forEach((c,i)=>{
+    c.classList.remove('active','prev');
+    if(i===current) c.classList.add('active');
+    else if(i===prev) c.classList.add('prev');
+  });
+  dotsContainer.querySelectorAll('.dot').forEach((d,i)=>{
+    d.classList.toggle('active',i===current);
+  });
+  resetAuto();
+}
+
+function next(){ goTo((current+1)%cards.length); }
+function prevSlide(){ goTo((current-1+cards.length)%cards.length); }
+
+document.getElementById('nav-next').addEventListener('click',next);
+document.getElementById('nav-prev').addEventListener('click',prevSlide);
+
+function resetAuto(){
+  clearInterval(autoTimer);
+  autoTimer=setInterval(next,4000);
+}
+
+document.addEventListener('keydown',e=>{
+  if(e.code==='ArrowRight') next();
+  else if(e.code==='ArrowLeft') prevSlide();
+  else if(e.code==='Enter'||e.code==='Space'){
+    e.preventDefault();
+    const href=cards[current].dataset.href;
+    if(href) window.location.href=href;
+  }
+});
+
+let touchX=0;
+document.getElementById('carousel').addEventListener('touchstart',e=>{touchX=e.touches[0].clientX;});
+document.getElementById('carousel').addEventListener('touchend',e=>{
+  const dx=e.changedTouches[0].clientX-touchX;
+  if(dx>40) prevSlide();
+  else if(dx<-40) next();
+});
+
+goTo(0);
+</script>
 </body>
 </html>
