@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SOL-Cade</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Press+Start+2P&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0a0a;
+      color: #14f195;
+      font-family: 'Press Start 2P', monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      text-align: center;
+    }
+    h1 {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: clamp(3rem, 10vw, 8rem);
+      color: #9945ff;
+      letter-spacing: 0.05em;
+      text-shadow: 0 0 20px rgba(153, 69, 255, 0.5);
+    }
+    .tagline {
+      font-size: clamp(0.6rem, 2vw, 1rem);
+      margin-top: 1.5rem;
+      color: #14f195;
+      text-shadow: 0 0 10px rgba(20, 241, 149, 0.4);
+    }
+    .insert-coin {
+      margin-top: 3rem;
+      font-size: 0.7rem;
+      color: #666;
+      animation: blink 1.2s step-end infinite;
+    }
+    @keyframes blink {
+      50% { opacity: 0; }
+    }
+  </style>
+</head>
+<body>
+  <h1>SOL-CADE</h1>
+  <p class="tagline">RETRO ARCADE ON SOLANA</p>
+  <p class="insert-coin">INSERT COIN TO CONTINUE</p>
+</body>
+</html>
