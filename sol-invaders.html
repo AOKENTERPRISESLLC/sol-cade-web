@@ -820,7 +820,7 @@ let leaderboard = JSON.parse(localStorage.getItem('solInvadersBoard') || '[]');
 let state='idle', paused=false;
 let score=0, lives=3, wave=1;
 let player, bullets, enemies, enemyBullets, barriers, particles;
-let enemyDir=1, enemySpeed=0.4;
+let enemyDir=1, enemySpeed=0.3;
 let shootTimer=0;
 let keys={}, mobileLeft=false, mobileRight=false, mobileFire=false;
 let fireDebounce=false;
@@ -1169,7 +1169,7 @@ function drawStreakPopup(){
 // ── Init ───────────────────────────────────────────────────────────
 function initGame(){
   score=0; lives=3; wave=1;
-  enemyDir=1; enemySpeed=0.4; shootTimer=0;
+  enemyDir=1; enemySpeed=0.3; shootTimer=0;
   marchTimer=0; marchInterval=0.55;
   mysteryShip=null; mysteryTimer=15+Math.random()*10;
   if(mysterySound){ mysterySound.stop(0); mysterySound=null; }
@@ -1186,7 +1186,7 @@ function initGame(){
 }
 
 function spawnPlayer(){
-  player={x:W/2, y:H-36, w:20, h:20, speed:200, invincible:0};
+  player={x:W/2, y:H-36, w:20, h:20, speed:240, invincible:0};
 }
 
 function spawnEnemies(){
@@ -1378,31 +1378,38 @@ function update(dt){
   bullets = bullets.filter(b=>b.y>-10);
   bullets.forEach(b=>b.y -= b.speed*dt);
 
-  // Enemy movement
+  // Enemy movement — classic tick-based stepping like the original
   const alive = enemies.filter(e=>!e.dead);
   if(!alive.length){ nextWave(); return; }
 
-  const leftmost = Math.min(...alive.map(e=>e.x));
-  const rightmost = Math.max(...alive.map(e=>e.x));
-
-  let drop=false;
-  if(rightmost >= W-30 && enemyDir>0){ enemyDir=-1; drop=true; }
-  if(leftmost  <= 30   && enemyDir<0){ enemyDir=1;  drop=true; }
-
-  const speed = enemySpeed + (1-alive.length/55)*0.9 + (wave-1)*0.18;
-  enemies.forEach(e=>{
-    if(e.dead) return;
-    e.x += enemyDir * speed;
-    if(drop) e.y += 14;
-    if(e.y > H-60){ gameOver(); return; }
-  });
-
-  // March beat
-  marchInterval = 0.1 + (alive.length/55)*0.45;
+  // Tick interval: full grid ~0.75s per step (slow dread), last few enemies ~0.05s (panic)
+  marchInterval = 0.05 + (alive.length / 55) * 0.7 - (wave - 1) * 0.015;
+  marchInterval = Math.max(0.05, marchInterval);
   marchTimer -= dt;
+
   if(marchTimer <= 0){
-    SFX.march();
     marchTimer = marchInterval;
+    SFX.march();
+
+    // Check if we need to drop + reverse BEFORE stepping
+    const leftmost = Math.min(...alive.map(e=>e.x));
+    const rightmost = Math.max(...alive.map(e=>e.x));
+
+    let drop = false;
+    if(rightmost >= W - 30 && enemyDir > 0){ enemyDir = -1; drop = true; }
+    if(leftmost  <= 30    && enemyDir < 0){ enemyDir = 1;  drop = true; }
+
+    // Step all enemies one discrete tick
+    const stepX = 6 + (wave - 1) * 0.5;
+    enemies.forEach(e => {
+      if(e.dead) return;
+      if(drop){
+        e.y += 10;
+      } else {
+        e.x += enemyDir * stepX;
+      }
+      if(e.y > H - 60){ gameOver(); return; }
+    });
   }
 
   // Mystery ship
@@ -1432,10 +1439,10 @@ function update(dt){
     const shooters = alive.filter(e=> !alive.some(o=>o.col===e.col&&!o.dead&&o.y>e.y));
     if(shooters.length){
       const s=shooters[Math.floor(Math.random()*shooters.length)];
-      enemyBullets.push({x:s.x,y:s.y+10,speed:200+wave*18});
+      enemyBullets.push({x:s.x,y:s.y+10,speed:160+wave*12});
     }
-    shootTimer = 0.7 - wave*0.05 - (1-alive.length/55)*0.3;
-    shootTimer = Math.max(0.25, shootTimer);
+    shootTimer = 0.9 - wave*0.04 - (1-alive.length/55)*0.2;
+    shootTimer = Math.max(0.35, shootTimer);
   }
 
   // Enemy bullets
@@ -1445,6 +1452,7 @@ function update(dt){
   // Collisions: player bullets vs mystery ship
   if(mysteryShip){
     bullets = bullets.filter(b=>{
+      if(!mysteryShip) return true;
       if(Math.abs(b.x-mysteryShip.x)<18 && Math.abs(b.y-mysteryShip.y)<10){
         score += mysteryShip.pts;
         if(score>hiScore){ hiScore=score; localStorage.setItem('solInvadersHi',hiScore); }
@@ -1866,7 +1874,7 @@ function drawChomper(){
 
 function nextWave(){
   wave++;
-  enemySpeed += 0.12;
+  enemySpeed += 0.08;
   SFX.waveClear();
   SFX.resetMarch();
   marchTimer = 0.5;
