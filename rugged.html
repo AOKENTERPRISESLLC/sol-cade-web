@@ -1,0 +1,1801 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>RUGGED! — A Web3 De-Rug Strategy Simulator</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0a0a0a;
+  --red: #cc0000;
+  --cream: #e8e0d0;
+  --muted: #a0998a;
+  --green: #2ecc40;
+  --font: 'Courier New', Courier, monospace;
+}
+
+html, body {
+  background: var(--bg);
+  color: var(--cream);
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.5;
+  height: 100%;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Noise overlay */
+body::after {
+  content: '';
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.04;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 256px 256px;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-width: 600px;
+  margin: 0 auto;
+  position: relative;
+}
+
+/* Ticker */
+#ticker {
+  background: var(--red);
+  color: var(--bg);
+  font-size: 12px;
+  font-weight: bold;
+  white-space: nowrap;
+  overflow: hidden;
+  padding: 4px 0;
+  flex-shrink: 0;
+  letter-spacing: 1px;
+  position: relative;
+  z-index: 10;
+}
+#ticker-inner {
+  display: inline-block;
+  animation: scroll-ticker 30s linear infinite;
+}
+@keyframes scroll-ticker {
+  0% { transform: translateX(100vw); }
+  100% { transform: translateX(-100%); }
+}
+
+/* HUD */
+#hud {
+  display: none;
+  flex-shrink: 0;
+  background: #111;
+  border-bottom: 1px solid #222;
+  padding: 8px 12px;
+  font-size: 11px;
+  z-index: 10;
+}
+#hud.visible { display: block; }
+
+.hud-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.hud-row:last-child { margin-bottom: 0; }
+
+.hud-stat { flex: 1; }
+.hud-label { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
+.hud-bar-wrap {
+  background: #222;
+  height: 8px;
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 2px;
+}
+.hud-bar {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.8s ease;
+}
+.hud-bar.hope { background: var(--green); }
+.hud-bar.burnout { background: var(--red); }
+.hud-val { color: var(--cream); font-size: 12px; margin-top: 1px; }
+
+/* Content area */
+#content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  scroll-behavior: smooth;
+}
+#content::-webkit-scrollbar { width: 4px; }
+#content::-webkit-scrollbar-track { background: transparent; }
+#content::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+
+.log-entry {
+  margin-bottom: 16px;
+}
+.log-entry.dimmed {
+  opacity: 0.35;
+}
+
+.narrative {
+  margin-bottom: 12px;
+  white-space: pre-wrap;
+}
+.narrative .cursor {
+  display: inline-block;
+  width: 8px;
+  height: 14px;
+  background: var(--cream);
+  animation: blink 0.7s step-end infinite;
+  vertical-align: text-bottom;
+  margin-left: 2px;
+}
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+/* Title screen */
+#title-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  text-align: center;
+  padding: 20px;
+}
+#title-screen h1 {
+  font-size: 48px;
+  color: var(--red);
+  text-shadow: 0 0 20px rgba(204,0,0,0.6), 0 0 40px rgba(204,0,0,0.3);
+  letter-spacing: 6px;
+  margin-bottom: 8px;
+}
+#title-screen .subtitle {
+  color: var(--muted);
+  font-size: 13px;
+  margin-bottom: 40px;
+  letter-spacing: 2px;
+}
+
+/* Buttons */
+.btn {
+  display: block;
+  width: 100%;
+  background: transparent;
+  border: 1px solid var(--red);
+  color: var(--cream);
+  font-family: var(--font);
+  font-size: 14px;
+  padding: 14px 16px;
+  margin-bottom: 8px;
+  text-align: left;
+  cursor: pointer;
+  min-height: 44px;
+  transition: background 0.15s, border-color 0.15s;
+  line-height: 1.4;
+}
+.btn:hover, .btn:focus {
+  background: rgba(204,0,0,0.15);
+  border-color: #ff2222;
+  outline: none;
+}
+.btn:active {
+  background: rgba(204,0,0,0.3);
+}
+
+.btn-start {
+  width: auto;
+  padding: 14px 48px;
+  text-align: center;
+  font-size: 18px;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+}
+
+.btn-label {
+  color: var(--cream);
+  font-weight: bold;
+  margin-bottom: 2px;
+}
+.btn-desc {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* Stat change indicators */
+.stat-change {
+  font-size: 12px;
+  margin: 2px 0;
+}
+.stat-change.pos { color: var(--green); }
+.stat-change.neg { color: var(--red); }
+
+/* Profile card */
+.profile-card {
+  border: 1px solid #333;
+  padding: 16px;
+  margin: 16px 0;
+}
+.profile-card h3 {
+  color: var(--red);
+  font-size: 14px;
+  letter-spacing: 2px;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+}
+.profile-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  font-size: 13px;
+}
+.profile-row .label { color: var(--muted); }
+.profile-row .value { color: var(--cream); }
+
+/* Decision prompt */
+.decision-prompt {
+  color: var(--red);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-bottom: 8px;
+  margin-top: 16px;
+}
+
+/* End screen */
+.end-title {
+  font-size: 24px;
+  color: var(--red);
+  text-shadow: 0 0 15px rgba(204,0,0,0.4);
+  text-align: center;
+  letter-spacing: 3px;
+  margin: 24px 0 8px;
+}
+.end-subtitle {
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  margin-bottom: 24px;
+  letter-spacing: 2px;
+}
+
+.separator {
+  border: none;
+  border-top: 1px solid #222;
+  margin: 16px 0;
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="ticker"><span id="ticker-inner"></span></div>
+  <div id="hud">
+    <div class="hud-row">
+      <div class="hud-stat">
+        <div class="hud-label">Hope</div>
+        <div class="hud-bar-wrap"><div class="hud-bar hope" id="hud-hope-bar" style="width:50%"></div></div>
+        <div class="hud-val" id="hud-hope-val">50%</div>
+      </div>
+      <div class="hud-stat">
+        <div class="hud-label">Burnout</div>
+        <div class="hud-bar-wrap"><div class="hud-bar burnout" id="hud-burnout-bar" style="width:10%"></div></div>
+        <div class="hud-val" id="hud-burnout-val">10%</div>
+      </div>
+    </div>
+    <div class="hud-row">
+      <div class="hud-stat">
+        <div class="hud-label">Treasury</div>
+        <div class="hud-val" id="hud-treasury">0.50 SOL</div>
+      </div>
+      <div class="hud-stat">
+        <div class="hud-label">Holders</div>
+        <div class="hud-val" id="hud-holders">12</div>
+      </div>
+      <div class="hud-stat">
+        <div class="hud-label">Wallet</div>
+        <div class="hud-val" id="hud-wallet">0.50 SOL</div>
+      </div>
+      <div class="hud-stat">
+        <div class="hud-label">Time</div>
+        <div class="hud-val" id="hud-time">Hour 0</div>
+      </div>
+    </div>
+  </div>
+  <div id="content"></div>
+</div>
+
+<script>
+// ============================================================
+// RUGGED! — A Web3 De-Rug Strategy Simulator
+// ============================================================
+
+const $ = id => document.getElementById(id);
+const content = $('content');
+
+// --- Audio ---
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function playClick() {
+  try {
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = 'sine';
+    o.frequency.value = 600;
+    g.gain.value = 0.03;
+    o.connect(g);
+    g.connect(audioCtx.destination);
+    o.start();
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.08);
+    o.stop(audioCtx.currentTime + 0.1);
+  } catch(e) {}
+}
+
+// --- Game State ---
+let gs = {
+  phase: 'title',
+  project: '',
+  theme: '',
+  stats: {
+    hope: 50,
+    burnout: 10,
+    treasury: 0.5,
+    wallet: 0.5,
+    holders: 12,
+    hype: 0,
+    trust: 0,
+    rep: 0,
+    control: 100,
+    hopeBuffer: 0,
+    burnoutResist: 0,
+    mysteryBonus: false,
+    socialPower: 0,
+    feeRedirectPending: false,
+    fudActive: false,
+    whaleCoLead: false,
+    trauma: 'low'
+  },
+  time: { phase: 'hour', value: 0 },
+  history: [],
+  tickerMode: 'pre'
+};
+
+// --- Save / Load ---
+function saveGame() {
+  try { localStorage.setItem('rugged_save', JSON.stringify(gs)); } catch(e) {}
+}
+function loadGame() {
+  try {
+    const d = localStorage.getItem('rugged_save');
+    if (d) { gs = JSON.parse(d); return true; }
+  } catch(e) {}
+  return false;
+}
+
+// --- Ticker ---
+const tickerMessages = {
+  pre: "gm... floor is lava... wen utility... probably nothing... LFG... ser this is a Wendy's... ngmi... wagmi... wen moon... DYOR... not financial advice...",
+  chaos: "FLOOR DROPPING... whale watching... FUD levels critical... diamond hands only... ngmi energy detected... trust no dev... liquidity evaporating... paperhands exit...",
+  good: "FLOOR RISING... new holders incoming... vibes immaculate... wagmi... based community... CT is watching... momentum building... LFG...",
+  general: "NOT FINANCIAL ADVICE... DYOR... trust the process... wen moon... CT never sleeps... gm... probably something... the art speaks..."
+};
+
+function setTicker(mode) {
+  gs.tickerMode = mode;
+  const text = tickerMessages[mode] || tickerMessages.general;
+  $('ticker-inner').textContent = '  ' + text.repeat(3) + '  ';
+}
+setTicker('pre');
+
+// --- HUD ---
+function updateHUD() {
+  const s = gs.stats;
+  const hope = Math.max(0, Math.min(100, s.hope));
+  const burnout = Math.max(0, Math.min(100, s.burnout));
+  $('hud-hope-bar').style.width = hope + '%';
+  $('hud-hope-val').textContent = hope + '%';
+  $('hud-burnout-bar').style.width = burnout + '%';
+  $('hud-burnout-val').textContent = burnout + '%';
+  $('hud-treasury').textContent = s.treasury.toFixed(2) + ' SOL';
+  $('hud-holders').textContent = s.holders;
+  $('hud-wallet').textContent = s.wallet.toFixed(2) + ' SOL';
+  const t = gs.time;
+  let timeStr = 'Hour 0';
+  if (t.phase === 'hour') timeStr = 'Hour ' + t.value;
+  else if (t.phase === 'day') timeStr = 'Day ' + t.value;
+  else if (t.phase === 'week') timeStr = 'Week ' + t.value;
+  $('hud-time').textContent = timeStr;
+}
+
+function showHUD() {
+  $('hud').classList.add('visible');
+  updateHUD();
+}
+function hideHUD() {
+  $('hud').classList.remove('visible');
+}
+
+// --- Typewriter ---
+function typewrite(el, text, speed = 30) {
+  return new Promise(resolve => {
+    let i = 0;
+    const cursor = document.createElement('span');
+    cursor.className = 'cursor';
+    el.textContent = '';
+    el.appendChild(cursor);
+    function tick() {
+      if (i < text.length) {
+        cursor.before(text[i]);
+        i++;
+        setTimeout(tick, speed);
+      } else {
+        cursor.remove();
+        resolve();
+      }
+    }
+    tick();
+  });
+}
+
+// --- Content helpers ---
+function dimPrevious() {
+  content.querySelectorAll('.log-entry:not(.dimmed)').forEach(el => {
+    el.classList.add('dimmed');
+  });
+}
+
+function scrollToBottom() {
+  setTimeout(() => { content.scrollTop = content.scrollHeight; }, 50);
+}
+
+function addEntry() {
+  const div = document.createElement('div');
+  div.className = 'log-entry';
+  content.appendChild(div);
+  scrollToBottom();
+  return div;
+}
+
+async function showNarrative(text, speed = 30) {
+  const entry = addEntry();
+  const p = document.createElement('div');
+  p.className = 'narrative';
+  entry.appendChild(p);
+  await typewrite(p, text, speed);
+  scrollToBottom();
+  return entry;
+}
+
+async function showLines(lines, pause = 600, speed = 25) {
+  for (const line of lines) {
+    await showNarrative(line, speed);
+    await delay(pause);
+  }
+}
+
+function delay(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+function showStatChanges(changes, entry) {
+  if (!entry) entry = addEntry();
+  const wrap = document.createElement('div');
+  wrap.style.marginTop = '8px';
+  changes.forEach(c => {
+    const div = document.createElement('div');
+    div.className = 'stat-change ' + (c.val > 0 ? 'pos' : 'neg');
+    div.textContent = c.label + ': ' + (c.val > 0 ? '+' : '') + c.val + (c.suffix || '');
+    wrap.appendChild(div);
+  });
+  entry.appendChild(wrap);
+  scrollToBottom();
+}
+
+function applyStats(changes) {
+  const display = [];
+  const nameMap = {
+    hope: 'Community Hope', burnout: 'Burnout', treasury: 'Treasury',
+    holders: 'Holders', hype: 'Hype', trust: 'Trust', rep: 'Rep',
+    wallet: 'Your Wallet', control: 'Control', hopeBuffer: 'Hope Buffer',
+    socialPower: 'Social Power', burnoutResist: 'Burnout Resistance'
+  };
+  for (const [k, v] of Object.entries(changes)) {
+    if (typeof v === 'number' && v !== 0) {
+      gs.stats[k] = (gs.stats[k] || 0) + v;
+      display.push({
+        label: nameMap[k] || k,
+        val: v,
+        suffix: k === 'treasury' || k === 'wallet' ? ' SOL' : (k === 'hope' || k === 'burnout' ? '%' : '')
+      });
+    } else if (typeof v === 'boolean') {
+      gs.stats[k] = v;
+    }
+  }
+  // Clamp
+  gs.stats.hope = Math.max(0, Math.min(100, gs.stats.hope));
+  gs.stats.burnout = Math.max(0, Math.min(100, gs.stats.burnout));
+  gs.stats.holders = Math.max(0, gs.stats.holders);
+  gs.stats.treasury = Math.max(0, gs.stats.treasury);
+  gs.stats.wallet = Math.max(0, gs.stats.wallet);
+  updateHUD();
+  return display;
+}
+
+// --- Decision UI ---
+function showDecision(prompt, options) {
+  return new Promise(resolve => {
+    const entry = addEntry();
+    const label = document.createElement('div');
+    label.className = 'decision-prompt';
+    label.textContent = prompt;
+    entry.appendChild(label);
+    options.forEach((opt, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'btn';
+      const lbl = document.createElement('div');
+      lbl.className = 'btn-label';
+      lbl.textContent = opt.label;
+      btn.appendChild(lbl);
+      if (opt.desc) {
+        const desc = document.createElement('div');
+        desc.className = 'btn-desc';
+        desc.textContent = opt.desc;
+        btn.appendChild(desc);
+      }
+      btn.onclick = () => {
+        playClick();
+        // Disable all
+        entry.querySelectorAll('.btn').forEach(b => {
+          b.disabled = true;
+          b.style.opacity = '0.3';
+          b.style.cursor = 'default';
+        });
+        btn.style.opacity = '1';
+        btn.style.borderColor = '#2ecc40';
+        resolve(i);
+      };
+      entry.appendChild(btn);
+    });
+    scrollToBottom();
+  });
+}
+
+function showButton(text, cls = '') {
+  return new Promise(resolve => {
+    const entry = addEntry();
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-start ' + cls;
+    btn.textContent = text;
+    btn.onclick = () => {
+      playClick();
+      btn.disabled = true;
+      btn.style.opacity = '0.3';
+      resolve();
+    };
+    entry.appendChild(btn);
+    scrollToBottom();
+  });
+}
+
+// --- Project Name Generator ---
+function generateProjectName(themeIdx) {
+  const prefixes = ["Cosmic", "Based", "Degen", "Pixel", "Quantum", "Shadow", "Neon", "Astral", "Cyber", "Omega"];
+  const suffixes = [
+    ["Apes", "Primates", "Chimps", "Gorillaz"],
+    ["Penguins", "Pinguins", "Waddles", "Flippers"],
+    ["Visions", "Frames", "Canvases", "Pixels"],
+    ["Lords", "Chads", "Frens", "Wojaks"]
+  ];
+  const p = prefixes[Math.floor(Math.random() * prefixes.length)];
+  const s = suffixes[themeIdx][Math.floor(Math.random() * suffixes[themeIdx].length)];
+  return p + ' ' + s;
+}
+
+// --- RNG ---
+function chance(pct) { return Math.random() * 100 < pct; }
+
+// --- Profile Card ---
+function showProfile() {
+  const entry = addEntry();
+  const card = document.createElement('div');
+  card.className = 'profile-card';
+  card.innerHTML = `
+    <h3>// Founder Profile</h3>
+    <div class="profile-row"><span class="label">Project:</span><span class="value">${gs.project}</span></div>
+    <div class="profile-row"><span class="label">Role:</span><span class="value">De-Rugger</span></div>
+    <div class="profile-row"><span class="label">Community Hope:</span><span class="value">${gs.stats.hope}%</span></div>
+    <div class="profile-row"><span class="label">Burnout:</span><span class="value">${gs.stats.burnout}%</span></div>
+    <div class="profile-row"><span class="label">Treasury:</span><span class="value">${gs.stats.treasury.toFixed(2)} SOL</span></div>
+    <div class="profile-row"><span class="label">Your Wallet:</span><span class="value">${gs.stats.wallet.toFixed(2)} SOL</span></div>
+    <div class="profile-row"><span class="label">Holders:</span><span class="value">${gs.stats.holders}</span></div>
+    <div class="profile-row"><span class="label">Trust:</span><span class="value">${gs.stats.trust}</span></div>
+    <div class="profile-row"><span class="label">Hype:</span><span class="value">${gs.stats.hype}</span></div>
+  `;
+  entry.appendChild(card);
+  scrollToBottom();
+}
+
+// --- End Screen ---
+// ============================================================
+// GAME FLOW
+// ============================================================
+
+async function startGame() {
+  // --- TITLE ---
+  content.innerHTML = '';
+  const titleDiv = document.createElement('div');
+  titleDiv.id = 'title-screen';
+  titleDiv.innerHTML = `
+    <h1>RUGGED!</h1>
+    <div class="subtitle">A Web3 De-Rug Strategy Simulator</div>
+  `;
+  content.appendChild(titleDiv);
+
+  const startBtn = document.createElement('button');
+  startBtn.className = 'btn btn-start';
+  startBtn.textContent = 'START';
+  startBtn.onclick = () => {
+    playClick();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    startBtn.disabled = true;
+    runPrologue();
+  };
+  titleDiv.appendChild(startBtn);
+  scrollToBottom();
+}
+
+async function runPrologue() {
+  content.innerHTML = '';
+  gs.phase = 'prologue';
+
+  // Q1
+  await showNarrative("Before the rug, there was a project.\nWhat kind of project were you holding?");
+  const q1 = await showDecision("Choose your project", [
+    { label: "Degen Apes", desc: "10K PFP collection. Floor was 2 SOL at peak." },
+    { label: "Pixel Penguins", desc: "Cute art, strong community vibes, merch potential." },
+    { label: "Generative Art", desc: "On-chain SVG. The art actually slaps." },
+    { label: "Meme Lords", desc: "Started as a joke. Accidentally built a cult." }
+  ]);
+  const themes = ['apes', 'penguins', 'art', 'meme'];
+  gs.theme = themes[q1];
+  gs.project = generateProjectName(q1);
+  dimPrevious();
+
+  await delay(400);
+  await showNarrative(`${gs.project}. That was the name.\nYou remember the mint day like it was yesterday.`);
+  await delay(600);
+
+  // Q2
+  await showNarrative("How deep did you ape in?");
+  const q2 = await showDecision("Your exposure level", [
+    { label: "Light Dip (1 NFT)", desc: "Wallet: 0.5 SOL. Low trauma. Nobody knows you." },
+    { label: "Medium Ape (5 NFTs)", desc: "Wallet: 0.2 SOL. Medium trauma. Recognized holder." },
+    { label: "Full Degen (20+ NFTs)", desc: "Wallet: 0.05 SOL. High trauma. Diamond hands legend. +10 rep." }
+  ]);
+  gs.stats.treasury = 0.3;
+  if (q2 === 0) {
+    gs.stats.wallet = 0.5; gs.stats.trauma = 'low';
+    gs.stats.burnout = 5;
+  } else if (q2 === 1) {
+    gs.stats.wallet = 0.2; gs.stats.trauma = 'medium';
+    gs.stats.burnout = 15; gs.stats.trust += 5;
+  } else {
+    gs.stats.wallet = 0.05; gs.stats.trauma = 'high';
+    gs.stats.burnout = 20; gs.stats.rep += 10; gs.stats.trust += 10;
+  }
+  dimPrevious();
+  await delay(400);
+
+  // Q3
+  await showNarrative("Every builder has a voice on CT.\nWhat's yours?");
+  const q3 = await showDecision("Your CT style", [
+    { label: "Memelord", desc: "You communicate in images. Engagement is chaotic but viral." },
+    { label: "Serious Founder", desc: "Threads, roadmaps, transparency reports." },
+    { label: "Spaces Warrior", desc: "You live on X Spaces. Your voice is your weapon." }
+  ]);
+  if (q3 === 0) gs.stats.socialPower += 15;
+  else if (q3 === 1) gs.stats.trust += 15;
+  else gs.stats.hype += 15;
+  dimPrevious();
+  await delay(400);
+
+  // Q4
+  await showNarrative("The floor is tanking. Paperhands are selling.\nWhy do you still believe?");
+  const q4 = await showDecision("Your conviction", [
+    { label: "The Art Slaps", desc: "The collection is genuinely good." },
+    { label: "The Community", desc: "These people are real. The vibes are real." },
+    { label: "Hidden Utility", desc: "There's something in the smart contract nobody noticed." },
+    { label: "Pure Spite", desc: "I refuse to let some kid win." }
+  ]);
+  if (q4 === 0) gs.stats.hopeBuffer += 10;
+  else if (q4 === 1) gs.stats.hopeBuffer += 15;
+  else if (q4 === 2) gs.stats.mysteryBonus = true;
+  else gs.stats.burnoutResist += 10;
+
+  // Set starting hope
+  gs.stats.hope = 40 + gs.stats.hopeBuffer;
+
+  dimPrevious();
+  await delay(800);
+  saveGame();
+  await runRugMoment();
+}
+
+async function runRugMoment() {
+  gs.phase = 'rugmoment';
+  setTicker('chaos');
+  content.innerHTML = '';
+
+  await showLines([
+    `Day 47 of holding ${gs.project}...`,
+    "The Discord is quiet. Too quiet.",
+    "You check the treasury wallet.",
+    "0.00 SOL",
+    "The dev's Twitter: deleted.",
+    "The website: 404.",
+    "Your DMs explode."
+  ], 900, 20);
+
+  await delay(1200);
+
+  await showNarrative("12 holders are still in the chat.\nSomeone posts: 'so... who's taking over?'", 25);
+  await delay(800);
+  await showNarrative("Everyone looks at you.", 40);
+  await delay(600);
+
+  await showButton("STEP UP");
+
+  dimPrevious();
+  await delay(400);
+
+  // Show profile
+  showProfile();
+  await showButton("BEGIN");
+
+  showHUD();
+  saveGame();
+  await runHour0();
+}
+
+// ============================================================
+// HOUR 0-24
+// ============================================================
+
+async function runHour0() {
+  gs.phase = 'hour0';
+  content.innerHTML = '';
+  setTicker('chaos');
+
+  // H1 — The Fee Fight
+  gs.time = { phase: 'hour', value: 1 };
+  updateHUD();
+
+  await showNarrative("HOUR 1", 15);
+  await delay(300);
+  await showNarrative("The original dev is still collecting creator fees from secondary sales. Every trade fills their wallet, not yours. The royalties that should be rebuilding this project are flowing straight to the ghost who abandoned it.", 20);
+  await delay(400);
+
+  const h1 = await showDecision("The Fee Fight", [
+    { label: "DM Pump.fun support", desc: "Beg them to verify the CTO and redirect fees. 50% chance of success." },
+    { label: "Post publicly calling out the platform", desc: "Hype +10, Hope +5. Risk of looking desperate." },
+    { label: "Ignore it — focus on community first", desc: "Trust +5, but treasury bleeds." }
+  ]);
+
+  let entry = addEntry();
+  let changes;
+  if (h1 === 0) {
+    const success = chance(50);
+    gs.stats.feeRedirectPending = true;
+    if (success) {
+      await showNarrative("You fire off a detailed DM to Pump.fun support with wallet proof, community links, and a plea. Two hours later: 'We'll look into it.' It's not a yes, but it's not a no.", 20);
+      changes = applyStats({ hope: 5, trust: 5 });
+    } else {
+      await showNarrative("You DM Pump.fun support. The reply comes back automated: 'We do not intervene in creator disputes.' The fees keep flowing to a deleted Twitter account.", 20);
+      changes = applyStats({ hope: -5 });
+    }
+  } else if (h1 === 1) {
+    await showNarrative("You quote-tweet the dev's last post with receipts. The fees, the deleted accounts, the empty promises. CT loves drama. It goes semi-viral. But some quote-tweets read: 'coping hard lmao'.", 20);
+    changes = applyStats({ hype: 10, hope: 5 });
+    if (chance(25)) {
+      await delay(300);
+      await showNarrative("A few influencers dunk on you. The 'cope' narrative sticks.", 20);
+      changes = changes.concat(applyStats({ hope: -5 }));
+    }
+  } else {
+    await showNarrative("You let the fees slide for now. The community notices you're focused on them, not the drama. Trust builds quietly.", 20);
+    changes = applyStats({ trust: 5 });
+  }
+  showStatChanges(changes, entry);
+  gs.history.push({ time: 'H1', choice: h1 });
+  saveGame();
+
+  dimPrevious();
+  await delay(800);
+
+  // H2 — First Post
+  gs.time = { phase: 'hour', value: 3 };
+  updateHUD();
+
+  await showNarrative("HOUR 3", 15);
+  await delay(300);
+  await showNarrative("You need to say something. 47 people are watching your X account right now. The cursor blinks in the compose box. This is your first impression as the new face of " + gs.project + ".", 20);
+  await delay(400);
+
+  const h2 = await showDecision("First Post", [
+    { label: "Bullish thread", desc: "'The art is real. We're taking over.' Hope +8, Hype +10. Small risk of 'cope' label." },
+    { label: "Honest acknowledgment", desc: "'We got rugged. But we're still here.' Trust +12, Hype -5." },
+    { label: "Unhinged meme", desc: "Post something chaotic and funny. 50/50: massive win or total flop." },
+    { label: "Say nothing yet", desc: "Gather intel. Trust +5 but miss momentum window." }
+  ]);
+
+  entry = addEntry();
+  if (h2 === 0) {
+    await showNarrative("You drop a 7-tweet thread. The art, the community, the vision. You end with 'We're not dead. We're just getting started.' The replies are mixed — some diamond hands, some 'ser this is cope'.", 20);
+    changes = applyStats({ hope: 8, hype: 10 });
+    if (chance(30)) {
+      await delay(300);
+      await showNarrative("A mid-tier influencer quote-tweets: 'average CTO copium'. Hope takes a hit.", 20);
+      changes = changes.concat(applyStats({ hope: -5 }));
+    }
+  } else if (h2 === 1) {
+    await showNarrative("'We got rugged. The dev dipped. But 12 of us are still here, and that means something.' The thread is quiet. No fireworks. But the DMs start coming in: 'respect.' 'I'm staying.'", 20);
+    changes = applyStats({ trust: 12, hype: -5 });
+  } else if (h2 === 2) {
+    if (chance(50)) {
+      await showNarrative("You post a deep-fried meme of the dev's PFP with 'he took the SOL but we kept the soul.' CT loses it. 2000 likes. Three new holders ape in from the meme alone.", 20);
+      changes = applyStats({ hope: 15, hype: 20, holders: 3 });
+    } else {
+      await showNarrative("You post a meme. Crickets. Two people like it, one of them is your alt. The timeline moves on. You feel the cringe settle in your chest.", 20);
+      changes = applyStats({ hope: -10 });
+    }
+  } else {
+    await showNarrative("You close the compose box. Not yet. You spend the next two hours reading every message in the Discord, mapping out who's still here and what they want. Intel gathered. Momentum lost.", 20);
+    changes = applyStats({ trust: 5, hype: -10 });
+  }
+  showStatChanges(changes, entry);
+  gs.history.push({ time: 'H2', choice: h2 });
+  saveGame();
+
+  dimPrevious();
+  await delay(800);
+
+  // H3 — The Whale DM
+  gs.time = { phase: 'hour', value: 8 };
+  updateHUD();
+
+  await showNarrative("HOUR 8", 15);
+  await delay(300);
+  await showNarrative("A new DM notification. You open it. A wallet holding 12 NFTs — the single biggest holder in the collection — messages you:\n\n'I'm still in. What's the plan?'", 20);
+  await delay(400);
+
+  const h3 = await showDecision("The Whale DM", [
+    { label: "Share your full vision", desc: "If they believe: Trust +20, Hope +10. If they don't: they dump. 70% positive." },
+    { label: "Ask them to co-lead", desc: "Trust +25, Hope +15. But -10 control — they'll make some decisions later." },
+    { label: "Play it cool", desc: "'We're figuring it out.' Safe. Trust +5. No downside, no upside." }
+  ]);
+
+  entry = addEntry();
+  if (h3 === 0) {
+    if (chance(70)) {
+      await showNarrative("You lay it all out. The fee redirect, the community rebuild, the new roadmap. They read it all. Then: 'I'm in. Whatever you need.' The biggest wallet in the project just co-signed your leadership.", 20);
+      changes = applyStats({ trust: 20, hope: 10 });
+    } else {
+      await showNarrative("You share the vision. They go quiet for twenty minutes. Then: 'I appreciate the transparency but I'm going to exit while there's still some floor.' Three listings appear on Magic Eden. The chat sees it immediately.", 20);
+      changes = applyStats({ holders: -3, hope: -15 });
+    }
+  } else if (h3 === 1) {
+    await showNarrative("'Would you want to co-lead this?' The reply comes fast: 'I was hoping you'd ask.' You just gained a partner. They have connections, liquidity, and opinions. Lots of opinions.", 20);
+    changes = applyStats({ trust: 25, hope: 15, control: -10 });
+    gs.stats.whaleCoLead = true;
+  } else {
+    await showNarrative("'We're working on it. Stay tuned.' Professional. Non-committal. They reply 'ok' and go quiet. No harm done. No momentum gained.", 20);
+    changes = applyStats({ trust: 5 });
+  }
+  showStatChanges(changes, entry);
+  gs.history.push({ time: 'H3', choice: h3 });
+  saveGame();
+
+  dimPrevious();
+  await delay(800);
+
+  // H4 — Random FUD Attack
+  gs.time = { phase: 'hour', value: 16 };
+  updateHUD();
+
+  await showNarrative("HOUR 16", 15);
+  await delay(300);
+  await showNarrative("A burner account with a Milady PFP and 47 followers posts:\n\n'LMAO they're trying to CTO " + gs.project + "? ngmi. Same dev different wallet.'\n\nThe post has 200 likes and climbing. Your mentions are filling with skull emojis.", 20);
+  await delay(400);
+
+  const h4 = await showDecision("FUD Attack", [
+    { label: "Clap back with receipts", desc: "Post your own wallet to prove independence. Trust +15 if it lands." },
+    { label: "Ignore and keep building", desc: "FUD lingers. -5 Hope per period until addressed." },
+    { label: "Rally the community", desc: "'Prove them wrong.' Hope +10 if community responds, -5 if crickets." }
+  ]);
+
+  entry = addEntry();
+  if (h4 === 0) {
+    await showNarrative("You screenshot your wallet history, your first mint transaction, your DMs with holders. You drop it all in a thread. The receipts are undeniable. The burner account goes quiet. CT respects the clap back.", 20);
+    changes = applyStats({ trust: 15 });
+  } else if (h4 === 1) {
+    await showNarrative("You close Twitter and open your IDE. Let the code do the talking. But the FUD post keeps getting shared. Every time someone new finds the project, they see that post first.", 20);
+    gs.stats.fudActive = true;
+    changes = applyStats({ hope: -5 });
+  } else {
+    const communityStrong = gs.stats.hope > 40;
+    if (communityStrong) {
+      await showNarrative("You post: 'Our community is the receipt.' And they show up. Diamond hands flooding the replies with their NFTs, their experiences, their support. The burner account gets ratio'd into oblivion.", 20);
+      changes = applyStats({ hope: 10, hype: 5 });
+    } else {
+      await showNarrative("You post: 'Our community is the receipt.' The replies are... sparse. Two people respond. The ratio is brutal. The FUD narrative gains strength.", 20);
+      changes = applyStats({ hope: -5 });
+      gs.stats.fudActive = true;
+    }
+  }
+  showStatChanges(changes, entry);
+  gs.history.push({ time: 'H4', choice: h4 });
+  saveGame();
+
+  dimPrevious();
+  await delay(800);
+
+  // Transition
+  gs.time = { phase: 'hour', value: 24 };
+  updateHUD();
+
+  await showNarrative("You survived the first 24 hours.\n\nThe hardest part isn't the rug. It's what comes after. The quiet hours when nobody's watching and you're staring at a floor price that doesn't move.\n\nBut you're still here. And so are they.", 25);
+  await delay(1000);
+
+  if (gs.stats.hope >= 50) setTicker('good');
+  else setTicker('general');
+
+  await showButton("CONTINUE TO WEEK 1");
+  content.innerHTML = '';
+  saveGame();
+  await runWeek1();
+}
+
+// ============================================================
+// WEEK 1
+// ============================================================
+
+async function runWeek1() {
+  gs.phase = 'week1';
+
+  // Apply lingering FUD if active
+  if (gs.stats.fudActive) {
+    applyStats({ hope: -5 });
+    updateHUD();
+  }
+
+  // W1 — The Discord
+  gs.time = { phase: 'day', value: 3 };
+  updateHUD();
+
+  await showNarrative("DAY 3", 15);
+  await delay(300);
+  await showNarrative("The old Discord is chaos. Slurs in general chat. Scam links pinned in announcements. The mod team ghosted with the dev. Every time a new holder joins, they see the wasteland and leave.", 20);
+  await delay(400);
+
+  const w1 = await showDecision("The Discord", [
+    { label: "Take over the old Discord", desc: "Familiarity for existing holders. But the drama lingers. Burnout +5." },
+    { label: "Start fresh Discord", desc: "Clean slate, new energy. Lose some holders in transition. Holders -3, Hope +5." },
+    { label: "Move to Telegram", desc: "More degen friendly, faster comms. Less moderation control. Hope +5, Burnout -5." }
+  ]);
+
+  let entry = addEntry();
+  let changes;
+  if (w1 === 0) {
+    await showNarrative("You spend six hours purging channels, banning bots, and rewriting the welcome message. The bones of the old community are still here — the emojis, the inside jokes, the channel names. Some holders appreciate the continuity. Others can't stop seeing ghosts.", 20);
+    changes = applyStats({ burnout: 5, trust: 5 });
+  } else if (w1 === 1) {
+    await showNarrative("New server. New energy. You post the invite link and hold your breath. 9 of the 12 holders migrate. Three don't make it. You tell yourself they were inactive anyway.", 20);
+    changes = applyStats({ holders: -3, hope: 5 });
+  } else {
+    await showNarrative("You spin up a TG group. It's faster, leaner, more chaotic. The degens love it. You can actually have a conversation without scrolling through 47 channels. Less control, but less overhead too.", 20);
+    changes = applyStats({ hope: 5, burnout: -5 });
+  }
+  showStatChanges(changes, entry);
+  gs.history.push({ time: 'W1', choice: w1 });
+  saveGame();
+
+  dimPrevious();
+  await delay(800);
+
+  // W2 — Treasury Reality
+  gs.time = { phase: 'day', value: 5 };
+  updateHUD();
+
+  await showNarrative("DAY 5", 15);
+  await delay(300);
+  await showNarrative(`You've done the math. The project wallet has ${gs.stats.treasury.toFixed(2)} SOL. Royalties trickle in at maybe 0.01 SOL per day. You need at least 2 SOL for a new mint contract, marketing, and basic infrastructure.\n\nAt this rate, you'll have enough SOL in... never.`, 20);
+  await delay(400);
+
+  const w2 = await showDecision("Treasury Reality", [
+    { label: "Inject your own funds", desc: "Treasury +1 SOL from personal wallet. Community doesn't know. You're now financially invested in a rugged project." },
+    { label: "Announce a community fundraise", desc: "If Hope > 50: Treasury +1.5 SOL. If Hope < 50: Treasury +0.2 SOL." },
+    { label: "Grind with what you have", desc: "Burnout +10, but no risk. The slow path." }
+  ]);
+
+  entry = addEntry();
+  if (w2 === 0) {
+    await showNarrative("You transfer 1 SOL from your personal wallet to the project treasury. Nobody sees it. Nobody knows. You're now financially invested in reviving a project that was built to fail. The irony isn't lost on you.", 20);
+    changes = applyStats({ treasury: 1, wallet: -1 });
+  } else if (w2 === 1) {
+    if (gs.stats.hope > 50) {
+      await showNarrative("You post the treasury address and a simple ask: 'If you believe in this, put something in.' The SOL starts trickling in. 0.1 here. 0.3 there. One anonymous wallet drops 0.5. By end of day, you have enough to work with.", 20);
+      changes = applyStats({ treasury: 1.5, trust: 10 });
+    } else {
+      await showNarrative("You post the treasury address. The response is... underwhelming. A few small donations trickle in. Most holders are burned and broke. The fundraise raises more questions than SOL.", 20);
+      changes = applyStats({ treasury: 0.2, hope: -5 });
+    }
+  } else {
+    await showNarrative("No shortcuts. You start building with what you have. Late nights designing new art. Learning Rust. Writing copy. Replying to every single message. It's exhausting. But it's honest.", 20);
+    changes = applyStats({ burnout: 10, trust: 5 });
+  }
+  showStatChanges(changes, entry);
+  gs.history.push({ time: 'W2', choice: w2 });
+  saveGame();
+
+  dimPrevious();
+  await delay(800);
+
+  // W3 — The Dev Returns
+  gs.time = { phase: 'day', value: 7 };
+  updateHUD();
+
+  await showNarrative("DAY 7", 15);
+  await delay(300);
+  await showNarrative("Your phone buzzes at 3 AM.\n\nThe original dev just posted on X for the first time since the rug:\n\n'I'm sorry. Life happened. I had medical bills. I want to come back and make this right.'\n\nThe post already has 400 likes. Your DMs are flooding. Everyone wants to know: what do you do?", 20);
+  await delay(600);
+
+  const w3 = await showDecision("The Dev Returns", [
+    { label: "Let them back — cautiously", desc: "Community splits 50/50. Hope -10. Possible treasury injection +2 SOL. Massive ongoing risk." },
+    { label: "Public rejection", desc: "'We don't need you.' Community rallies. Hope +20, Trust +25. Dev becomes antagonist." },
+    { label: "Ignore the post", desc: "Unresolved tension. FUD lingers. Hope -5 per period." },
+    { label: "DM them privately", desc: "Hear them out first. Trust +5, gain intel, delay public decision." }
+  ]);
+
+  entry = addEntry();
+  if (w3 === 0) {
+    await showNarrative("You post: 'Everyone deserves a second chance. But trust is earned, not given.' The community erupts. Half the holders are furious. Half think you're being mature. The dev transfers 2 SOL to the treasury as a 'good faith gesture.' It feels like blood money.", 20);
+    changes = applyStats({ hope: -10, treasury: 2 });
+  } else if (w3 === 1) {
+    await showNarrative("You quote-tweet the apology: 'We built this from your ashes. We don't need you. We never did.' The community goes absolutely feral. Diamond hands only. The post does numbers. For the first time since the rug, " + gs.project + " is trending.", 20);
+    changes = applyStats({ hope: 20, trust: 25, hype: 15 });
+    if (gs.stats.hope >= 50) setTicker('good');
+  } else if (w3 === 2) {
+    await showNarrative("You don't respond. You don't acknowledge it. You keep building. But the elephant in the room grows. Every community call, someone brings it up. The tension is suffocating.", 20);
+    changes = applyStats({ hope: -5 });
+    gs.stats.fudActive = true;
+  } else {
+    await showNarrative("You slide into their DMs. The conversation is... complicated. They share receipts of medical bills. A failed relationship. A spiral. You don't know what's real. But you know more than you did before. You buy yourself time to decide.", 20);
+    changes = applyStats({ trust: 5 });
+  }
+  showStatChanges(changes, entry);
+  gs.history.push({ time: 'W3', choice: w3 });
+
+  // Mystery bonus check
+  if (gs.stats.mysteryBonus && w3 === 3) {
+    await delay(600);
+    await showNarrative("While reading through the dev's messages, they let something slip: there's an unrevealed airdrop mechanism in the smart contract. If activated, every holder gets a companion NFT. This changes everything.", 20);
+    const bonusChanges = applyStats({ hope: 15, hype: 10 });
+    showStatChanges(bonusChanges, entry);
+  }
+
+  saveGame();
+  dimPrevious();
+  await delay(1200);
+
+  // Transition to Chapter 2
+  await showNarrative("One week.\n\nSeven days since someone pulled the rug out from under " + gs.project + ". Seven days since you decided to catch it.\n\nThe floor isn't mooning. The treasury isn't overflowing. But the lights are on, and someone's home.\n\nThat's more than most rugged projects can say.", 25);
+
+  await delay(1000);
+
+  await showButton("CONTINUE TO CHAPTER 2");
+  content.innerHTML = '';
+  saveGame();
+  await runWeek2();
+}
+
+// ============================================================
+// CHAPTER 2: BUILD (Weeks 2-4)
+// ============================================================
+
+async function runWeek2() {
+  gs.phase = 'week2';
+
+  if (gs.stats.fudActive) {
+    applyStats({ hope: -5 });
+    updateHUD();
+  }
+
+  await showNarrative("CHAPTER 2: BUILD", 15);
+  await delay(400);
+  await showNarrative("The chaos is stabilized. Hope is holding. The community is waiting for something real — not just 'traders never die' memes.\n\nThis is where 70% of CTOs quietly die. The 'what now?' vacuum.", 22);
+  await delay(800);
+
+  // B1 — The Roadmap Question
+  gs.time = { phase: 'week', value: 2 };
+  updateHUD();
+
+  await showNarrative("WEEK 2", 15);
+  await delay(300);
+  await showNarrative("The old dev's roadmap was vaporware — promised staking, merch, a V2 mint that never shipped. Community is spamming 'wen roadmap?' in every channel.\n\nBut you inherited broken promises. Do you honor them, burn them, or pretend they never existed?", 20);
+  await delay(400);
+
+  const b1 = await showDecision("The Roadmap Question", [
+    { label: "Honor the old roadmap", desc: "'We're finishing what he started.' Trust +15, but Hope -10 if it feels like cope." },
+    { label: "Burn it publicly", desc: "'Old roadmap is dead. New one is community-voted.' Hype +20, Hope +10, Control -5." },
+    { label: "Remix quietly", desc: "'We're evolving it with new utility.' Safe +8 Trust/Hope. FUD risk: 'no real plan.'" },
+    { label: "Ignore and meme only", desc: "'Roadmaps are for VCs, we're vibing.' Hype +15 short-term. Hope decays hard." }
+  ]);
+
+  let entry = addEntry();
+  let changes;
+  if (b1 === 0) {
+    await showNarrative("You repost the old roadmap with checkboxes. 'We're picking up where he left off.' The OGs appreciate the continuity. But when someone asks 'wen staking?' and you don't have an answer, the cope narrative starts spreading.", 20);
+    changes = applyStats({ trust: 15 });
+    if (chance(50)) {
+      await delay(300);
+      await showNarrative("A holder posts: 'so we're just doing the same roadmap that already failed? ngmi.' The thread gains traction.", 20);
+      changes = changes.concat(applyStats({ hope: -10 }));
+    }
+  } else if (b1 === 1) {
+    await showNarrative("You post a clean graphic: 'OLD ROADMAP: BURNED.' Below it: 'New roadmap. Community decides. Vote opens in 24 hours.' The energy shifts instantly. People are suggesting ideas, debating priorities. It feels alive.\n\nBut the whales are already lobbying for their pet features.", 20);
+    changes = applyStats({ hype: 20, hope: 10, control: -5 });
+  } else if (b1 === 2) {
+    await showNarrative("You quietly update the roadmap — same bones, new skin. 'Evolved utility' you call it. Some holders nod along. Others see through it. 'This is just the old roadmap with extra steps.' But at least you have a plan on paper.", 20);
+    changes = applyStats({ trust: 8, hope: 8 });
+    if (chance(30)) {
+      await delay(300);
+      await showNarrative("FUD account posts: 'no real plan, just vibes. same energy as pre-rug.' It stings because it's half true.", 20);
+      changes = changes.concat(applyStats({ hope: -5 }));
+    }
+  } else {
+    await showNarrative("'Roadmaps are for VCs. We're a community, not a startup.' The degens love it. Memes flood the TL. For about 48 hours, it works.\n\nThen the questions start again. 'But seriously, what's next?' You don't have an answer. The memes stop being funny.", 20);
+    changes = applyStats({ hype: 15, burnout: 10 });
+    gs.stats.noRoadmap = true;
+  }
+  showStatChanges(changes, entry);
+  gs.history.push({ time: 'B1', choice: b1 });
+  saveGame();
+
+  dimPrevious();
+  await delay(800);
+
+  // B2 — First Ship or First Hire
+  gs.time = { phase: 'week', value: 3 };
+  updateHUD();
+
+  await showNarrative("WEEK 3", 15);
+  await delay(300);
+  await showNarrative(`Treasury: ${gs.stats.treasury.toFixed(2)} SOL. The community wants to see something ship. Anything. A remint, new art, staking — proof that this isn't just a group chat pretending to be a project.\n\nBut you're one person. You need hands or you need to grind.`, 20);
+  await delay(400);
+
+  const b2 = await showDecision("First Ship or First Hire?", [
+    { label: "Ship cheap V1 yourself", desc: "Remint + airdrop to loyal holders. Hope +12, Holders +5, costs 0.2 SOL. Burnout +15." },
+    { label: "Hire community artist on rev-share", desc: "They grind, you split future fees. Hope +10, low cost. Risk: they flake (-5 Control)." },
+    { label: "Push for dev migration", desc: "New contract, lock LP, staking teaser. Trust +20 if it works. 50% FUD risk." },
+    { label: "Pure raids, no paid help", desc: "Safe burnout. But Hope decays -8 as nothing ships." }
+  ]);
+
+  entry = addEntry();
+  if (b2 === 0) {
+    await showNarrative("You spend 72 hours straight building. New art direction. Clean metadata. Airdrop list verified holder by holder. You push the remint live at 4 AM. Your eyes burn but the Discord explodes: 'LFG!!! NEW ART DROPPED'\n\nFive new wallets mint within the hour.", 20);
+    changes = applyStats({ hope: 12, holders: 5, treasury: -0.2, burnout: 15 });
+  } else if (b2 === 1) {
+    await showNarrative("You find a holder who's actually an artist. Their portfolio is legit. You offer rev-share on future creator fees plus allocation in any new mint. They're in.\n\nNew PFP variants start dropping in the Discord. The community goes nuts.", 20);
+    changes = applyStats({ hope: 10, trust: 5 });
+    if (chance(25)) {
+      await delay(300);
+      await showNarrative("Two weeks later, the artist ghosts. New job. Family stuff. The art pipeline dies overnight. You're back to square one with half-finished assets.", 20);
+      changes = changes.concat(applyStats({ control: -5, hope: -8 }));
+    }
+  } else if (b2 === 2) {
+    if (chance(50)) {
+      await showNarrative("You find a Solana dev who owes someone a favor. New contract deployed. LP locked. Staking teaser goes live. The on-chain receipts are undeniable — this is a real project now.\n\nFloor ticks up 0.3 SOL in 48 hours.", 20);
+      changes = applyStats({ trust: 20, hope: 15, treasury: -0.5 });
+    } else {
+      await showNarrative("The new contract deploys but CT immediately starts: 'new contract same dev.' Someone posts a conspiracy thread connecting your wallet to the original dev's. It's completely wrong but the damage is done.", 20);
+      changes = applyStats({ trust: -10, hope: -10, treasury: -0.5 });
+    }
+  } else {
+    await showNarrative("You organize raids. X raids. Discord raids. TG raids. The community brings energy but no product. After two weeks of pure hype with nothing to show, the engagement starts dropping.\n\n'Wen ship?' becomes the only message in the chat.", 20);
+    changes = applyStats({ hope: -8, burnout: -5 });
+    if (gs.stats.noRoadmap) {
+      await delay(300);
+      await showNarrative("With no roadmap AND no shipping, the 'dead project' whispers start.", 20);
+      changes = changes.concat(applyStats({ hope: -5 }));
+    }
+  }
+  showStatChanges(changes, entry);
+  gs.history.push({ time: 'B2', choice: b2 });
+  saveGame();
+
+  dimPrevious();
+  await delay(800);
+
+  // B3 — Treasury Stretch or Ape In (escalated)
+  gs.time = { phase: 'week', value: 4 };
+  updateHUD();
+
+  await showNarrative("WEEK 4", 15);
+  await delay(300);
+  await showNarrative(`The bills are real now. Contract deployment fees. Art commissions. A listing push on a mid-tier marketplace. Treasury sits at ${gs.stats.treasury.toFixed(2)} SOL.\n\nYou check your personal wallet: ${gs.stats.wallet.toFixed(2)} SOL. The line between 'project money' and 'your money' is getting dangerously blurry.`, 20);
+  await delay(400);
+
+  const b3 = await showDecision("Treasury Stretch or Ape In?", [
+    { label: "Inject your own wallet — again", desc: "Treasury +1.5 SOL. Trust +15. Your Wallet takes the hit. Burnout +20." },
+    { label: "Community fundraise (transparent multisig)", desc: "If Hope > 55: +2 SOL. If Hope < 55: +0.3 SOL and looks desperate." },
+    { label: "Wait for fee redirect to kick in", desc: "Safe but slow. Hope -5 until verified. If fees were approved in H1: +0.5 SOL/week starts." },
+    { label: "Cut losses and pivot to pure meme raids", desc: "Zero cost. No deliverables. Slow bleed begins." }
+  ]);
+
+  entry = addEntry();
+  if (b3 === 0) {
+    await showNarrative("You transfer another 1.5 SOL. Your personal wallet is thinning. You catch yourself checking the floor price before checking your bank account.\n\nBut the project has runway now. That's what matters. Right?", 20);
+    changes = applyStats({ treasury: 1.5, wallet: -1.5, trust: 15, burnout: 20 });
+  } else if (b3 === 1) {
+    if (gs.stats.hope > 55) {
+      await showNarrative("The community steps up. A proper multisig wallet. Transparent donations. One whale drops 1 SOL with the message 'for the culture.' By end of week, the treasury is the healthiest it's been since pre-rug.", 20);
+      changes = applyStats({ treasury: 2, trust: 15, hope: 5 });
+    } else {
+      await showNarrative("You set up the multisig and share the address. Three donations come in: 0.1, 0.05, 0.15. That's it. A holder posts: 'asking the community that got rugged to fund the recovery is... a choice.' Ouch.", 20);
+      changes = applyStats({ treasury: 0.3, hope: -8 });
+    }
+  } else if (b3 === 2) {
+    if (gs.stats.feeRedirectPending) {
+      await showNarrative("The Pump.fun verification finally comes through. Creator fees start flowing to the project wallet. It's not a lot — 0.5 SOL this week — but it's recurring revenue. For the first time, the project is self-sustaining. Barely.", 20);
+      changes = applyStats({ treasury: 0.5, hope: 10, trust: 10 });
+      gs.stats.feesVerified = true;
+    } else {
+      await showNarrative("You wait. And wait. The fee redirect never comes. Every day that passes, a little more hope evaporates. The treasury flatlines.", 20);
+      changes = applyStats({ hope: -5 });
+    }
+  } else {
+    await showNarrative("No money? No problem. You pivot to pure community energy. Raids, memes, vibes. It works for about 72 hours before the 'so what's the actual plan' messages start again.\n\nWithout product, there's nothing to raid for.", 20);
+    changes = applyStats({ hope: -5, burnout: -5 });
+  }
+  showStatChanges(changes, entry);
+  gs.history.push({ time: 'B3', choice: b3 });
+  saveGame();
+
+  dimPrevious();
+  await delay(800);
+
+  // Check for early game over
+  if (gs.stats.hope <= 10) {
+    await showNarrative("Hope has flatlined. The last three holders are posting 'rip' in the chat. " + gs.project + " joins the graveyard of rugged projects that tried to come back.\n\nMost of them end like this. Quietly.", 25);
+    await delay(800);
+    showEndingScreen('slow_fade');
+    return;
+  }
+
+  if (gs.stats.burnout >= 90) {
+    await showNarrative("You stare at your phone. 47 unread DMs. 12 missed pings. The Discord is melting down about something trivial. You close the app. Then you close it again. Then you delete it.\n\nYou ghosted.", 25);
+    await delay(800);
+    showEndingScreen('burnout_ghost');
+    return;
+  }
+
+  // Transition to Chapter 3
+  await showNarrative("Four weeks in.\n\nThe build phase is over — either you shipped something or you didn't. The community has been patient. Surprisingly patient.\n\nBut patience has a half-life. What comes next will define whether " + gs.project + " becomes a phoenix or a footnote.", 25);
+  await delay(1000);
+
+  if (gs.stats.hope >= 50) setTicker('good');
+
+  await showButton("CONTINUE TO CHAPTER 3");
+  content.innerHTML = '';
+  saveGame();
+  await runWeek5();
+}
+
+// ============================================================
+// CHAPTER 3: MOON (Weeks 5-8)
+// ============================================================
+
+async function runWeek5() {
+  gs.phase = 'week5';
+
+  if (gs.stats.fudActive) {
+    applyStats({ hope: -3 });
+    updateHUD();
+  }
+
+  await showNarrative("CHAPTER 3: MOON", 15);
+  await delay(400);
+  await showNarrative("The floor is moving. New wallets are appearing. Someone just screenshotted their unrealized gains and posted 'diamond hands.' For the first time since the rug, it feels real.\n\nBut momentum attracts attention. Not all of it good.", 22);
+  await delay(800);
+
+  // M1 — Sell-Out or Stay Pure
+  gs.time = { phase: 'week', value: 5 };
+  updateHUD();
+
+  await showNarrative("WEEK 5", 15);
+  await delay(300);
+  await showNarrative("Your DMs are different now. Instead of panicked holders, you're getting messages from KOLs with 50K+ followers:\n\n'Love the project ser. Want to partner? I'll raid it for 0.5 SOL or a rev-share deal.'\n\nThe temptation is real. One good raid could 5x the floor.", 20);
+  await delay(400);
+
+  const m1 = await showDecision("Sell-Out or Stay Pure?", [
+    { label: "Partner with the KOL", desc: "Paid raid. Hype +30, MCAP spike. But -15 Hope if they pump and dump." },
+    { label: "Stay pure — organic only", desc: "Trust +10 long-term. Slower growth. Diamond hands reward." },
+    { label: "Counter-offer rev-share", desc: "'You shill, we split fees.' Hype +15. Governance fights start." },
+    { label: "Ghost the DMs", desc: "Safe. Missed window. New buyers see 'dead project' if no buzz." }
+  ]);
+
+  let entry = addEntry();
+  let changes;
+  if (m1 === 0) {
+    await showNarrative("The KOL drops a thread. 'Just found the most undervalued CTO on Solana.' The chart goes vertical. New holders flood in. Floor 3x in 48 hours.", 20);
+    changes = applyStats({ hype: 30, holders: 15, hope: 10 });
+    if (chance(45)) {
+      await delay(500);
+      await showNarrative("72 hours later: the KOL's followers dump. All of them. The chart gives back 60% of the pump. The OGs are furious: 'you sold us out for a paid shill.' The trust damage is worse than the price damage.", 20);
+      changes = changes.concat(applyStats({ hope: -15, trust: -20, holders: -8 }));
+    }
+  } else if (m1 === 1) {
+    await showNarrative("You reply: 'Appreciate it but we're growing organic. No paid pumps.' The KOL moves on. Growth is slower. But every new holder found the project themselves. They're not leaving at the first red candle.", 20);
+    changes = applyStats({ trust: 10, hope: 5 });
+  } else if (m1 === 2) {
+    await showNarrative("'No upfront payment. You shill, we split creator fees 70/30.' The KOL agrees — they smell upside. The thread drops. Floor moves. But now there's a third party with financial stake in your project's success. They have opinions.", 20);
+    changes = applyStats({ hype: 15, holders: 8 });
+    gs.stats.kolPartner = true;
+    if (chance(30)) {
+      await delay(300);
+      await showNarrative("The KOL starts DMing: 'you should do a new mint. More supply = more fees for us.' They're not wrong. But 'us' hits different.", 20);
+      changes = changes.concat(applyStats({ control: -5 }));
+    }
+  } else {
+    await showNarrative("You leave the DMs on read. The KOL moves on to the next project. Growth stays flat. A few holders notice: 'why isn't anyone talking about us?' The momentum window closes.", 20);
+    changes = applyStats({ hope: -5 });
+  }
+  showStatChanges(changes, entry);
+  gs.history.push({ time: 'M1', choice: m1 });
+  saveGame();
+
+  dimPrevious();
+  await delay(800);
+
+  // M2 — Paper Hands vs Diamond Hands
+  gs.time = { phase: 'week', value: 6 };
+  updateHUD();
+
+  await showNarrative("WEEK 6", 15);
+  await delay(300);
+  await showNarrative("The first big green candle. Floor just 3x'd from the post-rug bottom. OGs who held through the darkest days are up 10x from their buy-in.\n\nSome of them are eyeing the exit. You can see it in the Discord: 'congrats to those taking profits' is the new 'gm.'", 20);
+  await delay(400);
+
+  const m2 = await showDecision("Paper Hands vs Diamond Hands", [
+    { label: "'Diamond hands only, paper hands ngmi'", desc: "Hope +15 from loyalists. But Holders -8 if whales actually dump." },
+    { label: "LP lock + burn", desc: "'Locking for the culture.' Trust +20, slows sell pressure." },
+    { label: "Let it flow — free market", desc: "Organic. Hope -10 on the inevitable dip." },
+    { label: "Reward stakers with extra allocation", desc: "Costs treasury. Hope +12. Encourages holding." }
+  ]);
+
+  entry = addEntry();
+  if (m2 === 0) {
+    await showNarrative("You post: 'If you survived the rug and you're selling now, you were never going to make it.' The replies are split. Loyalists drop diamond emojis. But two big wallets list within the hour.\n\nThe floor dips 15%. The paper hands meme cuts both ways.", 20);
+    changes = applyStats({ hope: 15 });
+    if (chance(50)) {
+      changes = changes.concat(applyStats({ holders: -8, hope: -8 }));
+      await delay(300);
+      await showNarrative("The whale from Week 1 just listed. Diamond hands only... unless you're a whale.", 20);
+    }
+  } else if (m2 === 1) {
+    await showNarrative("You lock the LP until 2027. Burn the keys. Post the transaction hash. 'No one can pull this rug. Not even me.'\n\nThe community loses it. The lock is proof — irrevocable, on-chain, undeniable. For the first time, 'trust' isn't just a word. It's a smart contract.", 20);
+    changes = applyStats({ trust: 20, hope: 10, treasury: -0.3 });
+  } else if (m2 === 2) {
+    await showNarrative("'Free market. We survived a rug — we can survive profit-taking.' The dip hits. 25% off the top. Discord goes quiet for a day. Then the dip buyers show up. New blood. The floor stabilizes lower but healthier.", 20);
+    changes = applyStats({ hope: -10, holders: 3 });
+  } else {
+    await showNarrative("You announce: 'Every wallet that's held since before the CTO gets an extra airdrop from the new collection.' The OGs go nuts. Selling pressure evaporates overnight. The floor holds.\n\nBut it cost treasury, and the new buyers feel like second-class citizens.", 20);
+    changes = applyStats({ hope: 12, treasury: -0.5, trust: 5 });
+  }
+  showStatChanges(changes, entry);
+  gs.history.push({ time: 'M2', choice: m2 });
+  saveGame();
+
+  dimPrevious();
+  await delay(800);
+
+  // M3 — Governance Drama
+  gs.time = { phase: 'week', value: 7 };
+  updateHUD();
+
+  await showNarrative("WEEK 7", 15);
+  await delay(300);
+
+  if (gs.stats.whaleCoLead) {
+    await showNarrative("Your co-lead — the whale from Hour 8 — is in your DMs again. But the tone has changed.\n\n'I think we need multisig access for the treasury. Equal keys. I've been here since day one and I've put up real money.'\n\nThe community is watching. Some say they deserve it. Others smell a power grab.", 20);
+  } else {
+    await showNarrative("A group of top holders has formed a 'council.' They want governance rights. Multisig access. A vote on every major decision.\n\n'We saved this project together. One person shouldn't control it.'\n\nThey're not entirely wrong. But DAOs move at the speed of consensus — which is to say, they don't.", 20);
+  }
+  await delay(400);
+
+  const m3 = await showDecision("Governance Drama — Who Owns It?", [
+    { label: "Give them co-lead / multisig access", desc: "Treasury boost possible. Control -15. Backstab risk." },
+    { label: "Full DAO vote on everything", desc: "Hope +20. But paralysis and FUD when votes stall." },
+    { label: "Keep control — 'I'm the lead until sustainable'", desc: "Trust short-term. Burnout +25. Autocrat narrative risk." },
+    { label: "Public rejection — 'community, not committees'", desc: "Hope +15 from OGs. Big holders may exit." }
+  ]);
+
+  entry = addEntry();
+  if (m3 === 0) {
+    await showNarrative("You hand over the keys. Shared multisig. Equal access. It feels like the right thing.\n\nFor about two weeks. Then the co-lead starts vetoing your decisions. 'I don't think we should spend treasury on that.' Every move becomes a negotiation.", 20);
+    changes = applyStats({ control: -15, trust: 10 });
+    if (chance(35)) {
+      await delay(400);
+      await showNarrative("You wake up to a notification: treasury transfer. 3 SOL moved to an unknown wallet. Your co-lead's DMs: 'needed it for a listing opportunity, will explain later.'\n\nThey don't explain later.", 20);
+      changes = changes.concat(applyStats({ treasury: -3, hope: -20, trust: -15 }));
+      gs.stats.betrayed = true;
+    }
+  } else if (m3 === 1) {
+    await showNarrative("You set up Snapshot voting. Every decision goes to the community. The first three votes pass unanimously.\n\nThen someone proposes 'pay the de-rugger a salary of 2 SOL/week.' It fails 60/40. You try not to take it personally. You fail.", 20);
+    changes = applyStats({ hope: 20, burnout: 10, control: -10 });
+  } else if (m3 === 2) {
+    await showNarrative("'I appreciate the input. But someone needs to make decisions, and right now that's me. When this is sustainable, we decentralize.'\n\nSome holders respect it. Others post: 'so we traded one dictator for another?' The autocrat narrative starts spreading.", 20);
+    changes = applyStats({ trust: 10, burnout: 25 });
+    if (gs.stats.hope < 50) {
+      changes = changes.concat(applyStats({ hope: -10 }));
+    }
+  } else {
+    await showNarrative("'This is a community, not a boardroom. No councils. No committees. We ship, you hold, we eat together.'\n\nThe OGs love it. The whales don't. Two large wallets list that night. The floor dips but the vibe holds.", 20);
+    changes = applyStats({ hope: 15, holders: -3 });
+  }
+  showStatChanges(changes, entry);
+  gs.history.push({ time: 'M3', choice: m3 });
+  saveGame();
+
+  dimPrevious();
+  await delay(800);
+
+  // M4 — Second Collection Gamble
+  gs.time = { phase: 'week', value: 8 };
+  updateHUD();
+
+  await showNarrative("WEEK 8", 15);
+  await delay(300);
+  await showNarrative("The momentum is real. The community is asking the question every CTO lead dreads and dreams of:\n\n'Wen new mint?'\n\nA second collection could fund everything — new utility, team, marketing. Or it could dilute the original holders and kill the magic that got you here.", 20);
+  await delay(400);
+
+  const m4 = await showDecision("Second Collection Gamble", [
+    { label: "Launch V2 mint — fund the future", desc: "If Hope > 60: massive success. If Hope < 60: dilution FUD kills momentum." },
+    { label: "Companion airdrop to holders only", desc: "No new supply pressure. Hope +15. Costs treasury but rewards loyalty." },
+    { label: "Pass — 'one collection, forever'", desc: "Trust +15. Some holders disappointed but scarcity narrative strengthens." },
+    { label: "Token launch instead of NFT", desc: "Different asset class. Huge upside or regulatory risk. High variance." }
+  ]);
+
+  entry = addEntry();
+  if (m4 === 0) {
+    if (gs.stats.hope > 60) {
+      await showNarrative("The mint sells out in 47 minutes. New holders. Fresh treasury. The OGs who held through the rug are sitting on OG status that money can't buy. The floor of the V1 actually rises — scarcity kicks in.\n\n" + gs.project + " isn't a CTO anymore. It's a project.", 20);
+      changes = applyStats({ treasury: 5, holders: 20, hope: 20, hype: 15 });
+    } else {
+      await showNarrative("The mint opens. 30% sells in the first hour. Then... nothing. The remaining supply sits unminted. Holders start panicking: 'too much supply.' The V1 floor drops 40% as the market absorbs the dilution.\n\n'Should have never minted V2' is the top post in Discord.", 20);
+      changes = applyStats({ treasury: 1.5, hope: -20, holders: -5 });
+    }
+  } else if (m4 === 1) {
+    await showNarrative("Every V1 holder gets a free companion NFT. No new supply on the market. No dilution. The community goes absolutely feral with gratitude.\n\n'This is how you do it.' is the top tweet. Other CTO projects take notes.", 20);
+    changes = applyStats({ hope: 15, trust: 15, treasury: -1 });
+    if (gs.stats.mysteryBonus) {
+      await delay(300);
+      await showNarrative("The hidden utility from the smart contract activates — the companion NFTs unlock a staking mechanism nobody expected. The floor doubles overnight.", 20);
+      changes = changes.concat(applyStats({ hope: 20, hype: 20, treasury: 2 }));
+    }
+  } else if (m4 === 2) {
+    await showNarrative("'One collection. No dilution. Ever.' You post it as a pledge. The scarcity narrative takes hold. Holders start treating their NFTs like artifacts — survived a rug, revived by community, limited forever.\n\nThe floor creeps up. Slowly. Sustainably.", 20);
+    changes = applyStats({ trust: 15, hope: 5 });
+  } else {
+    await showNarrative("You launch a token. $" + gs.project.split(' ')[1].toUpperCase() + " goes live on Raydium. The chart does what charts do — violent green, violent red, violent green again.\n\nThe NFT holders are confused. The token traders don't care about the NFTs. You've accidentally created two communities that don't understand each other.", 20);
+    changes = applyStats({ hype: 25, hope: -5, holders: 10, treasury: 3 });
+    if (chance(30)) {
+      await delay(300);
+      await showNarrative("A legal-sounding DM arrives: 'Your token may constitute an unregistered security.' You don't know if it's real. You don't sleep that night.", 20);
+      changes = changes.concat(applyStats({ burnout: 15 }));
+    }
+  }
+  showStatChanges(changes, entry);
+  gs.history.push({ time: 'M4', choice: m4 });
+  saveGame();
+
+  dimPrevious();
+  await delay(800);
+
+  // Check for early endings
+  if (gs.stats.hope <= 10) {
+    await showNarrative("The floor hits zero. The last holder delists. " + gs.project + " is officially dead.\n\nYou open the Discord one last time. The most recent message is from three days ago: 'gm?'\n\nNobody replied.", 25);
+    await delay(800);
+    showEndingScreen('slow_fade');
+    return;
+  }
+
+  if (gs.stats.burnout >= 90) {
+    await showNarrative("You can't do this anymore. The DMs, the demands, the drama. You open your wallet, stare at the floor price, and close the app.\n\nYou don't open it again.", 25);
+    await delay(800);
+    showEndingScreen('burnout_ghost');
+    return;
+  }
+
+  if (gs.stats.betrayed) {
+    await showNarrative("The backstab is public now. CT knows. The narrative writes itself: 'CTO lead got rugged by his own co-lead.' The irony is so thick you could mint it.", 22);
+    await delay(800);
+    showEndingScreen('hostile_takeover');
+    return;
+  }
+
+  // Transition to Legacy
+  await showNarrative("Eight weeks.\n\nTwo months since a deleted Twitter account and an empty wallet changed your life. You've been called a hero, a rugger, a cope lord, and a legend — sometimes in the same thread.\n\n" + gs.project + " is still here. The question now isn't survival.\n\nIt's legacy.", 25);
+  await delay(1000);
+
+  await showButton("CONTINUE TO CHAPTER 4");
+  content.innerHTML = '';
+  saveGame();
+  await runLegacy();
+}
+
+// ============================================================
+// CHAPTER 4: LEGACY (Week 8+)
+// ============================================================
+
+async function runLegacy() {
+  gs.phase = 'legacy';
+
+  await showNarrative("CHAPTER 4: LEGACY", 15);
+  await delay(400);
+  await showNarrative("Most CTOs are dead by now. The graveyard is full of projects that survived the rug but couldn't survive the grind.\n\nYou're still here. That means something. The question is: what was this all for?", 22);
+  await delay(800);
+
+  // L1 — Burnout Exit or Grind Forever
+  gs.time = { phase: 'month', value: 3 };
+  updateHUD();
+
+  await showNarrative("MONTH 3", 15);
+  await delay(300);
+  await showNarrative(`You do the math. You've been working on ${gs.project} for three months. Zero salary. Your personal wallet is at ${gs.stats.wallet.toFixed(2)} SOL. Your burnout is at ${gs.stats.burnout}%.\n\nHolders treat you like a full-time founder. You're answering DMs at 2 AM, moderating drama at breakfast, and checking the floor price before you check on your actual life.\n\nSomething has to give.`, 20);
+  await delay(400);
+
+  const l1 = await showDecision("Burnout Exit or Grind Forever?", [
+    { label: "Quiet walk away", desc: "'I did my part. Community owns it now.' Burnout heals. 60% chance project fades." },
+    { label: "Hand off to DAO/multisig cleanly", desc: "Transparent transition. Trust +20. The Decentralized02 play." },
+    { label: "Hire successor with treasury", desc: "Costs resources. New drama risk. But you're free." },
+    { label: "Double down — 'I'm in this forever'", desc: "Hope boost from loyalists. But burnout game-over risk is real." }
+  ]);
+
+  let entry = addEntry();
+  let changes;
+  if (l1 === 0) {
+    if (chance(60)) {
+      await showNarrative("You stop posting. Stop replying. Stop checking. The Discord notices within 48 hours. 'Where's the lead?' becomes 'I think they left.'\n\nWithout you, the energy drains. The floor slides. By month 4, " + gs.project + " is a ghost town with a Telegram that pings once a week.", 20);
+      changes = applyStats({ burnout: -50 });
+      await delay(800);
+      showEndingScreen('burnout_ghost');
+      return;
+    } else {
+      await showNarrative("You step back quietly. But something unexpected happens — the community doesn't die. A small group of holders picks up where you left off. They were watching. They were learning.\n\n" + gs.project + " lives on. Just... without you.", 20);
+      changes = applyStats({ burnout: -50, hope: -10 });
+      await delay(800);
+      showEndingScreen('cult_classic');
+      return;
+    }
+  } else if (l1 === 1) {
+    await showNarrative("You write a post. The longest thread you've ever written. The journey. The rug. The rebuild. The sleepless nights. And the handoff.\n\n'I'm stepping back. Here are the keys. Multisig is live. The community owns " + gs.project + " now. It always did.'\n\nThe post goes viral. CT calls it 'the cleanest exit in CTO history.' The floor pumps 30% on the news.", 20);
+    changes = applyStats({ trust: 20, hope: 15, burnout: -30 });
+    gs.stats.cleanHandoff = true;
+  } else if (l1 === 2) {
+    await showNarrative("You find someone. A holder who's been grinding since Week 1. You offer them the keys, a treasury allocation, and your blessing.\n\nThe transition is messy. Some holders prefer you. Others embrace the new lead. The project survives, altered. Like a ship where every plank has been replaced.", 20);
+    changes = applyStats({ treasury: -1, burnout: -20, control: -10, trust: 5 });
+  } else {
+    await showNarrative("'I'm not leaving. Not now. Not ever. This project IS me.'\n\nThe loyalists love it. The burnout doesn't care about loyalty. Your responses get slower. Your threads get shorter. The bags under your eyes are visible in your PFP.\n\nBut you're still here. God help you, you're still here.", 20);
+    changes = applyStats({ hope: 10, burnout: 20 });
+    if (gs.stats.burnout >= 85) {
+      await delay(400);
+      await showNarrative("Your body makes the decision your mind won't. You collapse at your desk. When you wake up, there are 200 unread messages. You don't read them.", 20);
+      showEndingScreen('burnout_ghost');
+      return;
+    }
+  }
+  showStatChanges(changes, entry);
+  gs.history.push({ time: 'L1', choice: l1 });
+  saveGame();
+
+  dimPrevious();
+  await delay(800);
+
+  // L2 — The Irony Rug Accusation
+  gs.time = { phase: 'month', value: 4 };
+  updateHUD();
+
+  await showNarrative("MONTH 4", 15);
+  await delay(300);
+  await showNarrative("You sell 2 NFTs from your personal holdings. You need rent money. Actual, real-world rent money.\n\nThree hours later, a screenshot is circulating CT:\n\n'RUGGED BY THE DE-RUGGER?? " + gs.project + " lead just dumped 2 NFTs'\n\n1,400 likes. 200 quote tweets. The narrative machine is warming up.", 20);
+  await delay(400);
+
+  const l2 = await showDecision("The Irony Rug Accusation", [
+    { label: "Full transparency — post wallet + reasoning", desc: "'I sold 2 for rent. Here's my wallet. Still holding majority.' Trust +15 if believed." },
+    { label: "Deny and lock remaining", desc: "Lock your remaining NFTs. 'I'm not going anywhere.' Cope label risk." },
+    { label: "Ignore it", desc: "FUD lingers. Hope -20/week until addressed." },
+    { label: "Lean into it — 'yeah I need to eat'", desc: "Humanizing. Trust +10 from real ones. Hype -10 from traders." }
+  ]);
+
+  entry = addEntry();
+  if (l2 === 0) {
+    await showNarrative("You screenshot your entire wallet history. Every transaction. Every hold. You post it with: 'I sold 2 to pay rent. I'm still holding 15. I've put more money INTO this project than I've ever taken out.'\n\nThe receipts are clear. Most of CT respects it. The FUD account deletes their post.", 20);
+    changes = applyStats({ trust: 15, hope: 5 });
+  } else if (l2 === 1) {
+    await showNarrative("You lock your remaining NFTs in a time-locked contract. 'There. Now nobody can say I'll rug.' The community appreciates the gesture.\n\nBut you also just locked up your only exit. If this project dies, those NFTs die with it. And you still need rent money.", 20);
+    changes = applyStats({ trust: 10, burnout: 10, wallet: -0.5 });
+  } else if (l2 === 2) {
+    await showNarrative("You don't respond. The screenshot keeps circulating. Someone adds annotations. Someone makes a meme. The 'de-rugger rugger' narrative gets its own hashtag.\n\nBy end of week, it's the only thing anyone associates with " + gs.project + ".", 20);
+    changes = applyStats({ hope: -20, trust: -15 });
+    gs.stats.fudActive = true;
+  } else {
+    await showNarrative("'Yeah, I sold two. I need to eat. If that makes me a rugger, then every single one of you who took profits is a rugger too.'\n\nThe real ones respect it. 'Based' fills the replies. But the trader crowd bounces. They want moon, not humanity.", 20);
+    changes = applyStats({ trust: 10, hype: -10 });
+  }
+  showStatChanges(changes, entry);
+  gs.history.push({ time: 'L2', choice: l2 });
+  saveGame();
+
+  dimPrevious();
+  await delay(800);
+
+  // L3 — Sustainable Vibes or Utility Push
+  gs.time = { phase: 'month', value: 6 };
+  updateHUD();
+
+  await showNarrative("MONTH 6", 15);
+  await delay(300);
+  await showNarrative("Six months. " + gs.project + " is still alive. That alone puts it in the top 5% of rugged projects.\n\nBut 'alive' and 'thriving' are different things. The community is smaller now — the tourists left. What remains is either a cult or a corpse. Your choice.", 20);
+  await delay(400);
+
+  const l3 = await showDecision("Sustainable Vibes or Utility Push?", [
+    { label: "Build real utility — staking, merch, partnerships", desc: "Go full startup mode. Treasury investment. High risk, high reward." },
+    { label: "Embrace the cult — vibes, art, community", desc: "Small but loyal. Sustainable. The Cult Classic path." },
+    { label: "Pivot entirely — rebrand and relaunch", desc: "Kill the old name. Start fresh with the same community. Bold." },
+    { label: "Let it be — whatever happens, happens", desc: "Acceptance. The project will find its own level." }
+  ]);
+
+  entry = addEntry();
+  if (l3 === 0) {
+    if (gs.stats.treasury > 3 && gs.stats.hope > 50) {
+      await showNarrative("You go all in. Staking goes live. Merch store opens. A partnership with a mid-tier Solana project drops. The floor responds — slowly at first, then all at once.\n\n" + gs.project + " isn't a meme anymore. It's infrastructure.", 20);
+      changes = applyStats({ hope: 25, trust: 20, hype: 15, treasury: -2 });
+      await delay(800);
+      showEndingScreen('phoenix');
+      return;
+    } else {
+      await showNarrative("You try to build utility on fumes. The staking contract is buggy. The merch store gets three orders. The partnership falls through.\n\nYou spent the last of the treasury on a vision the market wasn't ready for.", 20);
+      changes = applyStats({ treasury: -2, hope: -15, burnout: 15 });
+    }
+  } else if (l3 === 1) {
+    await showNarrative("You stop trying to moon. You start trying to matter.\n\nWeekly art drops. Community calls every Thursday. A small but fierce group of holders who genuinely like each other. The floor is low but stable. Nobody's selling because nobody wants to leave.\n\n" + gs.project + " becomes the project people point to and say: 'that's what community actually looks like.'", 20);
+    changes = applyStats({ hope: 10, trust: 15, burnout: -10 });
+    await delay(800);
+    showEndingScreen('cult_classic');
+    return;
+  } else if (l3 === 2) {
+    await showNarrative("You kill " + gs.project + ". The name. The art. The Discord channel names. Everything.\n\nFrom the ashes, a new project rises. Same people. Same wallets. New identity.\n\nSome holders mourn the old name. Others are energized. The floor resets to zero. The community doesn't.", 20);
+    changes = applyStats({ hope: 5, hype: 15, trust: -10 });
+    await delay(800);
+    showEndingScreen('phoenix');
+    return;
+  } else {
+    await showNarrative("You let go. Whatever happens to " + gs.project + " will happen on its own terms. You check in once a week. Then once a month.\n\nThe project finds its level — a quiet corner of Solana where 30 wallets hold forever and nothing ever changes.", 20);
+    changes = applyStats({ burnout: -20 });
+    await delay(800);
+    showEndingScreen('cult_classic');
+    return;
+  }
+  showStatChanges(changes, entry);
+  gs.history.push({ time: 'L3', choice: l3 });
+  saveGame();
+
+  dimPrevious();
+  await delay(800);
+
+  // If we got here without an ending, determine one from stats
+  if (gs.stats.hope >= 60 && gs.stats.trust >= 50) {
+    showEndingScreen('phoenix');
+  } else if (gs.stats.hope >= 30) {
+    showEndingScreen('cult_classic');
+  } else {
+    showEndingScreen('slow_fade');
+  }
+}
+
+// ============================================================
+// ENDINGS
+// ============================================================
+
+function showEndingScreen(ending) {
+  const endings = {
+    phoenix: {
+      title: 'PHOENIX SUCCESS',
+      desc: `${gs.project} rose from the ashes. Floor mooned. Community thrived. You became a legend on CT — the de-rugger who actually made it.\n\nThey'll write threads about this one.`,
+      color: '#2ecc40'
+    },
+    cult_classic: {
+      title: 'CULT CLASSIC',
+      desc: `${gs.project} never mooned. But it never died either. A small, loyal community holds forever. The art matters. The vibes are real.\n\nNot every success story needs a chart.`,
+      color: '#e8e0d0'
+    },
+    burnout_ghost: {
+      title: 'BURNOUT GHOST',
+      desc: `You gave everything to ${gs.project}. Your time. Your money. Your sleep. Your sanity.\n\nIn the end, the project survived. You didn't.\n\nThe Discord still has your last message pinned: 'gm. big things coming this week.' That was six weeks ago.`,
+      color: '#cc0000'
+    },
+    slow_fade: {
+      title: 'SLOW FADE',
+      desc: `No dramatic death. No rug. No scandal. ${gs.project} just... stopped.\n\nThe Discord went quiet. The floor went to zero. The last holder delisted without a word.\n\nThis is how most projects end. Not with a bang, but with an unread notification.`,
+      color: '#a0998a'
+    },
+    hostile_takeover: {
+      title: 'HOSTILE TAKEOVER',
+      desc: `You trusted the wrong person. The whale — the one who said 'I'm still in' — took the keys and the treasury.\n\nCT calls it poetic: the de-rugger got rugged by his own co-lead. The memes write themselves.\n\nSomewhere, the original dev is laughing.`,
+      color: '#cc0000'
+    },
+    new_rug_accusations: {
+      title: 'NEW RUG ACCUSATIONS',
+      desc: `You tried. God, you tried. But CT decided you were the villain. The screenshots. The accusations. The hashtag.\n\n'De-rugger is the new rugger' trends for a day. Your reputation is ash.\n\nThe irony is that you're still holding.`,
+      color: '#cc0000'
+    },
+    irony: {
+      title: 'THE IRONY',
+      desc: `You revived ${gs.project}. You mooned the floor. You made the holders whole.\n\nAnd then, quietly, wallet by wallet, you sold everything.\n\nThe community didn't notice for three weeks. By then, you were gone. Just like the original dev.\n\nHistory doesn't repeat, but it rhymes.`,
+      color: '#a0998a'
+    }
+  };
+
+  const e = endings[ending] || endings.slow_fade;
+
+  const entry = addEntry();
+  entry.innerHTML = `
+    <hr class="separator">
+    <div class="end-title" style="color:${e.color}">${e.title}</div>
+    <div class="end-subtitle" style="color:var(--muted)">// ENDING UNLOCKED</div>
+    <div style="margin:16px 0;line-height:1.7;white-space:pre-wrap;">${e.desc}</div>
+    <div class="profile-card">
+      <h3>// Final Stats</h3>
+      <div class="profile-row"><span class="label">Project:</span><span class="value">${gs.project}</span></div>
+      <div class="profile-row"><span class="label">Community Hope:</span><span class="value">${Math.max(0,Math.min(100,gs.stats.hope))}%</span></div>
+      <div class="profile-row"><span class="label">Burnout:</span><span class="value">${Math.max(0,Math.min(100,gs.stats.burnout))}%</span></div>
+      <div class="profile-row"><span class="label">Treasury:</span><span class="value">${gs.stats.treasury.toFixed(2)} SOL</span></div>
+      <div class="profile-row"><span class="label">Your Wallet:</span><span class="value">${gs.stats.wallet.toFixed(2)} SOL</span></div>
+      <div class="profile-row"><span class="label">Holders:</span><span class="value">${gs.stats.holders}</span></div>
+      <div class="profile-row"><span class="label">Trust:</span><span class="value">${gs.stats.trust}</span></div>
+      <div class="profile-row"><span class="label">Hype:</span><span class="value">${gs.stats.hype}</span></div>
+      <div class="profile-row"><span class="label">Decisions:</span><span class="value">${gs.history.length}</span></div>
+      <div class="profile-row"><span class="label">Ending:</span><span class="value" style="color:${e.color}">${e.title}</span></div>
+    </div>
+  `;
+
+  const restartBtn = document.createElement('button');
+  restartBtn.className = 'btn btn-start';
+  restartBtn.style.marginTop = '24px';
+  restartBtn.textContent = 'PLAY AGAIN';
+  restartBtn.onclick = () => {
+    playClick();
+    localStorage.removeItem('rugged_save');
+    location.reload();
+  };
+  entry.appendChild(restartBtn);
+
+  setTicker('general');
+  scrollToBottom();
+}
+
+// --- Boot ---
+startGame();
+</script>
+</body>
+</html>

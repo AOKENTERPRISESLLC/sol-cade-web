@@ -235,6 +235,14 @@
       <div class="game-art" id="art-break"></div>
       <a href="sol-break.html" class="play-btn">Play</a>
     </div>
+
+    <div class="game-card" data-href="rugged.html">
+      <div class="card-accent" style="background:linear-gradient(135deg,#cc0000,transparent);"></div>
+      <div class="game-genre">De-Rug Strategy Sim</div>
+      <div class="game-title" style="color:#cc0000;font-family:'Courier New',monospace;letter-spacing:.08em;">RUGGED!</div>
+      <div class="game-art" id="art-rugged"></div>
+      <a href="rugged.html" class="play-btn" style="border-color:#cc0000;color:#cc0000;" onmouseover="this.style.background='#cc0000';this.style.color='#0a0a0a'" onmouseout="this.style.background='transparent';this.style.color='#cc0000'">Play</a>
+    </div>
   </div>
 
   <div id="dots"></div>
@@ -338,9 +346,35 @@ function drawBreakArt(container){
   x.fillRect(75,90,50,6);
 }
 
+function drawRuggedArt(container){
+  const c=document.createElement('canvas');
+  c.width=200; c.height=100; c.style.imageRendering='pixelated';
+  container.appendChild(c);
+  const x=c.getContext('2d');
+  // Rug being pulled — pixel art
+  x.fillStyle='#cc0000';
+  // Rug shape
+  x.fillRect(20,60,160,8);
+  x.fillRect(30,68,140,4);
+  // Rug fringe
+  for(let i=0;i<8;i++){ x.fillRect(24+i*20,72,8,6); }
+  // Rug pattern
+  x.fillStyle='#e8e0d0';
+  for(let i=0;i<6;i++){ x.fillRect(36+i*24,62,12,4); }
+  // Chart line going up then crashing
+  x.strokeStyle='#2ecc40'; x.lineWidth=2;
+  x.beginPath(); x.moveTo(30,50); x.lineTo(60,40); x.lineTo(90,25); x.lineTo(110,15); x.stroke();
+  x.strokeStyle='#cc0000'; x.lineWidth=2;
+  x.beginPath(); x.moveTo(110,15); x.lineTo(120,35); x.lineTo(130,50); x.lineTo(140,55); x.lineTo(170,58); x.stroke();
+  // "RUG" text pixel style
+  x.fillStyle='#a0998a';
+  x.font='bold 10px Courier New'; x.fillText('dev has left the chat',38,90);
+}
+
 drawInvaderArt(document.getElementById('art-invaders'));
 drawAsteroidArt(document.getElementById('art-asteroids'));
 drawBreakArt(document.getElementById('art-break'));
+drawRuggedArt(document.getElementById('art-rugged'));
 
 // ── Carousel ──
 const cards=document.querySelectorAll('.game-card');
