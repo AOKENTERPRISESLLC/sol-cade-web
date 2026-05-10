@@ -532,7 +532,21 @@ const SFX = (function(){
     document.getElementById('sound-toggle').textContent = 'SFX: '+(enabled?'ON':'OFF');
   }
 
-  return { paddleHit, brickBreak, wallBounce, loseLife, levelClear, gameOverSfx, coinInsert, toggle, isEnabled:()=>enabled };
+  function powerupCollect(){
+    if(!enabled) return;
+    const ctx = ensureCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(660, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(1320, ctx.currentTime + 0.1);
+    gain.gain.setValueAtTime(0.1, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.15);
+  }
+
+  return { paddleHit, brickBreak, wallBounce, loseLife, levelClear, gameOverSfx, coinInsert, powerupCollect, toggle, isEnabled:()=>enabled };
 })();
 
 document.getElementById('sound-toggle').addEventListener('click', SFX.toggle);
@@ -594,11 +608,23 @@ let hiScore = parseInt(localStorage.getItem('solBreakHi')) || 0;
 let state = 'idle', paused = false;
 let score = 0, lives = 3, level = 1;
 let paddle, ball, bricks, particles, ballTrail;
+let balls = []; // multi-ball support
+let powerups = [];
+let paddleW = PADDLE_W; // current paddle width (can change via powerups)
 let keys = {}, mobileLeft = false, mobileRight = false;
 let animId, lastTime = 0;
 let shakeX = 0, shakeY = 0, shakeDur = 0, shakeIntensity = 0;
-let ballStuck = true; // ball stuck to paddle until launch
+let ballStuck = true;
 let comboCount = 0, comboTimer = 0;
+let hitCount = 0; // track hits for OG speed-up
+
+const POWERUP_TYPES = [
+  { type:'multi',  label:'M', color:'#9945FF', desc:'MULTI-BALL' },
+  { type:'expand', label:'E', color:'#14F195', desc:'EXPAND' },
+  { type:'slow',   label:'S', color:'#E0E0FF', desc:'SLOW' },
+];
+const POWERUP_CHANCE = 0.18;
+const POWERUP_SPEED = 120;
 
 // Attract mode
 let attractMode = false;
@@ -625,13 +651,15 @@ function initBricks(){
 function resetBall(){
   ballStuck = true;
   ball = {
-    x: paddle.x + PADDLE_W/2,
+    x: paddle.x + paddleW/2,
     y: PADDLE_Y - BALL_R - 1,
     dx: 0, dy: 0,
     speed: BALL_BASE_SPEED + (level-1)*15,
     r: BALL_R
   };
+  balls = [];
   ballTrail = [];
+  hitCount = 0;
 }
 
 function launchBall(){
@@ -647,9 +675,13 @@ function initGame(){
   lives = 3;
   level = 1;
   particles = [];
+  powerups = [];
+  balls = [];
   comboCount = 0;
   comboTimer = 0;
-  paddle = { x: W/2 - PADDLE_W/2 };
+  hitCount = 0;
+  paddleW = PADDLE_W;
+  paddle = { x: W/2 - paddleW/2 };
   initBricks();
   resetBall();
   updateHUD();
@@ -659,6 +691,8 @@ function nextLevel(){
   level++;
   initBricks();
   resetBall();
+  powerups = [];
+  paddleW = PADDLE_W;
   comboCount = 0;
   comboTimer = 0;
   updateHUD();
@@ -721,18 +755,18 @@ function update(dt){
 
   // Attract mode AI
   if(attractMode && !ballStuck){
-    const targetX = ball.x - PADDLE_W/2;
+    const targetX = ball.x - paddleW/2;
     if(paddle.x < targetX - 5) pdx = 1;
     else if(paddle.x > targetX + 5) pdx = -1;
     else pdx = 0;
   }
 
   paddle.x += pdx * PADDLE_SPEED * dt;
-  paddle.x = Math.max(0, Math.min(W - PADDLE_W, paddle.x));
+  paddle.x = Math.max(0, Math.min(W - paddleW, paddle.x));
 
   // Ball stuck to paddle
   if(ballStuck){
-    ball.x = paddle.x + PADDLE_W/2;
+    ball.x = paddle.x + paddleW/2;
     ball.y = PADDLE_Y - BALL_R - 1;
     // Attract mode auto-launch
     if(attractMode){
@@ -800,9 +834,9 @@ function update(dt){
      ball.y + ball.r >= PADDLE_Y &&
      ball.y + ball.r <= PADDLE_Y + PADDLE_H + 4 &&
      ball.x >= paddle.x - ball.r &&
-     ball.x <= paddle.x + PADDLE_W + ball.r){
+     ball.x <= paddle.x + paddleW + ball.r){
     // Where on paddle? -1 (left edge) to 1 (right edge)
-    const hitPos = ((ball.x - paddle.x) / PADDLE_W) * 2 - 1;
+    const hitPos = ((ball.x - paddle.x) / paddleW) * 2 - 1;
     const clampedHit = Math.max(-0.9, Math.min(0.9, hitPos));
     // Angle: -150 deg (left) to -30 deg (right)
     const angle = -Math.PI/2 + clampedHit * (Math.PI/3);
@@ -828,8 +862,31 @@ function update(dt){
         score += comboCount * 5; // combo bonus
       }
 
+      // OG speed-up: every 4 hits, ball gets faster
+      hitCount++;
+      if(hitCount % 4 === 0){
+        ball.speed = Math.min(ball.speed * 1.05, 600);
+        const spd = ball.speed;
+        const mag = Math.sqrt(ball.dx*ball.dx + ball.dy*ball.dy);
+        ball.dx = (ball.dx/mag) * spd;
+        ball.dy = (ball.dy/mag) * spd;
+      }
+
       SFX.brickBreak(b.row);
       spawnParticles(b.x + b.w/2, b.y + b.h/2, b.color, 8);
+
+      // Power-up drop chance
+      if(Math.random() < POWERUP_CHANCE){
+        const ptype = POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)];
+        powerups.push({
+          x: b.x + b.w/2,
+          y: b.y + b.h/2,
+          type: ptype.type,
+          label: ptype.label,
+          color: ptype.color,
+          desc: ptype.desc
+        });
+      }
 
       // Determine bounce direction
       // Check which side the ball hit from
@@ -862,6 +919,76 @@ function update(dt){
     nextLevel();
   }
 
+  // Update power-ups (fall + collect)
+  for(let i=powerups.length-1; i>=0; i--){
+    const pu = powerups[i];
+    pu.y += POWERUP_SPEED * dt;
+    // Collect on paddle
+    if(pu.y + 8 >= PADDLE_Y && pu.y - 8 <= PADDLE_Y + PADDLE_H &&
+       pu.x >= paddle.x && pu.x <= paddle.x + paddleW){
+      SFX.powerupCollect();
+      applyPowerup(pu.type);
+      spawnParticles(pu.x, pu.y, pu.color, 6);
+      powerups.splice(i, 1);
+      continue;
+    }
+    // Off screen
+    if(pu.y > H + 10){
+      powerups.splice(i, 1);
+    }
+  }
+
+  // Update extra balls (multi-ball)
+  for(let i=balls.length-1; i>=0; i--){
+    const eb = balls[i];
+    eb.x += eb.dx * dt;
+    eb.y += eb.dy * dt;
+    // Wall bounce
+    if(eb.x - eb.r <= 0){ eb.x = eb.r; eb.dx = Math.abs(eb.dx); }
+    if(eb.x + eb.r >= W){ eb.x = W - eb.r; eb.dx = -Math.abs(eb.dx); }
+    if(eb.y - eb.r <= 0){ eb.y = eb.r; eb.dy = Math.abs(eb.dy); }
+    // Fall off bottom — extra balls just die
+    if(eb.y - eb.r > H){ balls.splice(i, 1); continue; }
+    // Paddle bounce
+    if(eb.dy > 0 && eb.y + eb.r >= PADDLE_Y && eb.y + eb.r <= PADDLE_Y + PADDLE_H + 4 &&
+       eb.x >= paddle.x - eb.r && eb.x <= paddle.x + paddleW + eb.r){
+      const hitPos = ((eb.x - paddle.x) / paddleW) * 2 - 1;
+      const clampedHit = Math.max(-0.9, Math.min(0.9, hitPos));
+      const angle = -Math.PI/2 + clampedHit * (Math.PI/3);
+      eb.dx = Math.cos(angle) * eb.speed;
+      eb.dy = Math.sin(angle) * eb.speed;
+      eb.y = PADDLE_Y - eb.r - 1;
+    }
+    // Brick collision for extra balls
+    for(let j=0; j<bricks.length; j++){
+      const b = bricks[j];
+      if(!b.alive) continue;
+      if(rectCircle(b.x, b.y, b.w, b.h, eb.x, eb.y, eb.r)){
+        b.alive = false;
+        score += b.pts;
+        SFX.brickBreak(b.row);
+        spawnParticles(b.x + b.w/2, b.y + b.h/2, b.color, 8);
+        const overlapLeft = (eb.x + eb.r) - b.x;
+        const overlapRight = (b.x + b.w) - (eb.x - eb.r);
+        const overlapTop = (eb.y + eb.r) - b.y;
+        const overlapBottom = (b.y + b.h) - (eb.y - eb.r);
+        if(Math.min(overlapLeft, overlapRight) < Math.min(overlapTop, overlapBottom)){
+          eb.dx = -eb.dx;
+        } else {
+          eb.dy = -eb.dy;
+        }
+        updateHUD();
+        break;
+      }
+    }
+    // Re-check level clear after extra ball brick hits
+    if(bricks.every(b => !b.alive)){
+      SFX.levelClear();
+      nextLevel();
+      break;
+    }
+  }
+
   // Update particles
   for(let i=particles.length-1; i>=0; i--){
     const p = particles[i];
@@ -878,6 +1005,9 @@ function update(dt){
     if(ballTrail[i].life <= 0) ballTrail.splice(i, 1);
   }
 
+  // Power-up flash timer
+  if(powerupFlashTimer > 0) powerupFlashTimer -= dt;
+
   // Screen shake
   if(shakeDur > 0){
     shakeDur -= dt;
@@ -888,7 +1018,44 @@ function update(dt){
   }
 }
 
-function draw(){
+let powerupFlash = '';
+let powerupFlashTimer = 0;
+
+function applyPowerup(type){
+  if(type === 'multi'){
+    for(let i=0; i<2; i++){
+      const angle = -Math.PI/2 + (i === 0 ? -0.5 : 0.5);
+      balls.push({
+        x: ball.x, y: ball.y,
+        dx: Math.cos(angle) * ball.speed,
+        dy: Math.sin(angle) * ball.speed,
+        speed: ball.speed,
+        r: BALL_R
+      });
+    }
+    powerupFlash = 'MULTI-BALL!';
+  } else if(type === 'expand'){
+    paddleW = Math.min(140, paddleW + 30);
+    paddle.x = Math.min(paddle.x, W - paddleW);
+    powerupFlash = 'EXPAND!';
+  } else if(type === 'slow'){
+    ball.speed = Math.max(180, ball.speed * 0.7);
+    const mag = Math.sqrt(ball.dx*ball.dx + ball.dy*ball.dy);
+    if(mag > 0){
+      ball.dx = (ball.dx/mag) * ball.speed;
+      ball.dy = (ball.dy/mag) * ball.speed;
+    }
+    balls.forEach(eb => {
+      eb.speed = Math.max(180, eb.speed * 0.7);
+      const m = Math.sqrt(eb.dx*eb.dx + eb.dy*eb.dy);
+      if(m > 0){ eb.dx = (eb.dx/m) * eb.speed; eb.dy = (eb.dy/m) * eb.speed; }
+    });
+    powerupFlash = 'SLOW!';
+  }
+  powerupFlashTimer = 1.5;
+}
+
+function drawGame(){
   ctx.clearRect(0, 0, W, H);
   ctx.save();
   ctx.translate(shakeX, shakeY);
@@ -920,13 +1087,48 @@ function draw(){
   ctx.shadowColor = C.green;
   ctx.shadowBlur = 12;
   ctx.fillStyle = C.green;
-  roundRect(ctx, paddle.x, PADDLE_Y, PADDLE_W, PADDLE_H, PADDLE_RADIUS);
+  roundRect(ctx, paddle.x, PADDLE_Y, paddleW, PADDLE_H, PADDLE_RADIUS);
   ctx.fill();
   // Paddle highlight
   ctx.shadowBlur = 0;
   ctx.fillStyle = 'rgba(255,255,255,0.2)';
-  roundRect(ctx, paddle.x+4, PADDLE_Y+2, PADDLE_W-8, PADDLE_H/2-1, 3);
+  roundRect(ctx, paddle.x+4, PADDLE_Y+2, paddleW-8, PADDLE_H/2-1, 3);
   ctx.fill();
+
+  // Draw power-ups (falling capsules)
+  powerups.forEach(pu => {
+    ctx.shadowColor = pu.color;
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = pu.color;
+    roundRect(ctx, pu.x-12, pu.y-8, 24, 16, 8);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#000';
+    ctx.font = 'bold 10px Orbitron, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(pu.label, pu.x, pu.y);
+  });
+  ctx.shadowBlur = 0;
+  ctx.textBaseline = 'alphabetic';
+
+  // Draw extra balls
+  balls.forEach(eb => {
+    ctx.shadowColor = C.pink;
+    ctx.shadowBlur = 12;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(eb.x, eb.y, eb.r, 0, Math.PI*2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    const g = ctx.createRadialGradient(eb.x-1, eb.y-1, 0, eb.x, eb.y, eb.r);
+    g.addColorStop(0, 'rgba(255,255,255,0.5)');
+    g.addColorStop(1, 'rgba(255,111,216,0.2)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(eb.x, eb.y, eb.r, 0, Math.PI*2);
+    ctx.fill();
+  });
 
   // Draw ball trail
   ballTrail.forEach(t => {
@@ -973,6 +1175,19 @@ function draw(){
     ctx.shadowColor = C.pink;
     ctx.shadowBlur = 10;
     ctx.fillText('COMBO x'+comboCount+' +'+comboCount*5, W/2, H/2 + 60);
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+  }
+
+  // Power-up flash text
+  if(powerupFlashTimer > 0){
+    ctx.globalAlpha = Math.min(1, powerupFlashTimer);
+    ctx.font = '700 18px Orbitron, sans-serif';
+    ctx.fillStyle = C.green;
+    ctx.textAlign = 'center';
+    ctx.shadowColor = C.green;
+    ctx.shadowBlur = 15;
+    ctx.fillText(powerupFlash, W/2, H/2 + 40);
     ctx.shadowBlur = 0;
     ctx.globalAlpha = 1;
   }
@@ -1026,7 +1241,7 @@ function gameLoop(ts){
   lastTime = ts;
   if(state === 'playing'){
     update(dt);
-    draw();
+    drawGame();
   }
 }
 
